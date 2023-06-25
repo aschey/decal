@@ -19,7 +19,7 @@ pub struct AudioManager {
     input_sample_rate: usize,
     output_builder: OutputBuilder,
     device_name: Option<String>,
-    output: AudioOutput,
+    output: AudioOutput<f32>,
     resampler: FftFixedInOut<f32>,
     resampler_buf: Vec<Vec<f32>>,
     volume: f32,
@@ -130,7 +130,7 @@ impl AudioManager {
         source: Box<dyn Source>,
         volume: Option<f32>,
         start_position: Option<Duration>,
-    ) -> Result<Decoder, DecoderError> {
+    ) -> Result<Decoder<f32>, DecoderError> {
         Decoder::new(DecoderParams {
             source,
             volume: volume.unwrap_or(self.volume),
@@ -139,7 +139,7 @@ impl AudioManager {
         })
     }
 
-    pub fn decode_source(&mut self, decoder: &Decoder, resample_chunk_size: usize) {
+    pub fn decode_source(&mut self, decoder: &Decoder<f32>, resample_chunk_size: usize) {
         self.volume = decoder.volume();
 
         let input_sample_rate = decoder.sample_rate();
@@ -168,14 +168,14 @@ impl AudioManager {
         // stop_position.position
     }
 
-    pub fn decode_next(&mut self, decoder: &mut Decoder) -> Result<usize, DecoderError> {
+    pub fn decode_next(&mut self, decoder: &mut Decoder<f32>) -> Result<usize, DecoderError> {
         match self.decoder_mode {
             DecoderMode::Resample => self.decode_resample(decoder),
             DecoderMode::NoResample => self.decode_no_resample(decoder),
         }
     }
 
-    fn decode_no_resample(&mut self, decoder: &mut Decoder) -> Result<usize, DecoderError> {
+    fn decode_no_resample(&mut self, decoder: &mut Decoder<f32>) -> Result<usize, DecoderError> {
         // self.output.write(decoder.current());
         // loop {
         match decoder.next()? {
@@ -188,7 +188,7 @@ impl AudioManager {
         // }
     }
 
-    fn decode_resample(&mut self, decoder: &mut Decoder) -> Result<usize, DecoderError> {
+    fn decode_resample(&mut self, decoder: &mut Decoder<f32>) -> Result<usize, DecoderError> {
         let mut cur_frame = decoder.current();
         // let mut written = 0;
 

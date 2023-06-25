@@ -1,6 +1,7 @@
 use self::source::Source;
 use crate::output::RequestedOutputConfig;
 use cpal::{SampleFormat, SampleRate};
+use dasp::sample::Sample as DaspSample;
 use std::{
     io,
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -8,11 +9,13 @@ use std::{
 use symphonia::core::{
     audio::{Channels, SampleBuffer, SignalSpec},
     codecs::{Decoder as SymphoniaDecoder, DecoderOptions},
+    conv::ConvertibleSample,
     errors::Error,
     formats::{FormatOptions, FormatReader, Packet, SeekMode, SeekTo, SeekedTo},
     io::MediaSourceStream,
     meta::MetadataOptions,
     probe::Hint,
+    sample::Sample,
     units::{Time, TimeBase},
 };
 use tap::TapFallible;
@@ -49,9 +52,9 @@ pub struct CurrentPosition {
 }
 
 #[derive(Debug)]
-pub struct DecoderParams {
+pub struct DecoderParams<T: Sample + DaspSample> {
     pub(crate) source: Box<dyn Source>,
-    pub(crate) volume: f32,
+    pub(crate) volume: T::Float,
     pub(crate) output_channels: usize,
     pub(crate) start_position: Option<Duration>,
 }
@@ -64,14 +67,14 @@ enum InitializeOpt {
 
 const NANOS_PER_SEC: f64 = 1_000_000_000.0;
 
-pub struct Decoder {
-    buf: Vec<f32>,
-    sample_buf: SampleBuffer<f32>,
+pub struct Decoder<T: Sample + dasp::sample::Sample> {
+    buf: Vec<T>,
+    sample_buf: SampleBuffer<T>,
     decoder: Box<dyn SymphoniaDecoder>,
     reader: Box<dyn FormatReader>,
     time_base: TimeBase,
     buf_len: usize,
-    volume: f32,
+    volume: T::Float,
     track_id: u32,
     input_channels: usize,
     output_channels: usize,
@@ -80,9 +83,11 @@ pub struct Decoder {
     sample_rate: usize,
 }
 
-impl Decoder {
-    pub fn new(params: DecoderParams) -> Result<Self, DecoderError> {
-        info!("Start decoding {params:?}");
+impl<T> Decoder<T>
+where
+    T: Sample + dasp::sample::Sample + ConvertibleSample,
+{
+    pub fn new(params: DecoderParams<T>) -> Result<Self, DecoderError> {
         let DecoderParams {
             source,
             volume,
@@ -141,7 +146,7 @@ impl Decoder {
             output_channels,
             track_id: track.id,
             buf: vec![],
-            sample_buf: SampleBuffer::<f32>::new(0, SignalSpec::new(0, Channels::all())),
+            sample_buf: SampleBuffer::<T>::new(0, SignalSpec::new(0, Channels::all())),
             volume,
             timestamp: 0,
             paused: false,
@@ -161,11 +166,11 @@ impl Decoder {
         Ok(decoder)
     }
 
-    pub fn set_volume(&mut self, volume: f32) {
+    pub fn set_volume(&mut self, volume: T::Float) {
         self.volume = volume;
     }
 
-    pub fn volume(&self) -> f32 {
+    pub fn volume(&self) -> T::Float {
         self.volume
     }
 
@@ -245,7 +250,7 @@ impl Decoder {
         if initialize_opt == InitializeOpt::TrimSilence {
             // Edge case: if the volume is 0 then this will cause an issue because every sample will come back as silent
             // Need to set the volume to 1 until we find the silence, then we can set it back
-            self.volume = 1.0;
+            self.volume = T::IDENTITY;
         }
 
         loop {
@@ -256,7 +261,7 @@ impl Decoder {
             if initialize_opt == InitializeOpt::PreserveSilence {
                 break;
             }
-            if let Some(mut index) = self.buf.iter().position(|s| *s != 0.0) {
+            if let Some(mut index) = self.buf.iter().position(|s| *s != T::MID) {
                 // Edge case: if the first non-silent sample is on an odd-numbered index, we'll start on the wrong channel
                 // This only matters for stereo outputs
                 if self.output_channels == 2 && index % 2 == 1 {
@@ -265,8 +270,10 @@ impl Decoder {
                 self.buf_len -= index;
                 samples_skipped += index;
                 // Trim all the silent samples
-                let buf_no_silence: Vec<f32> =
-                    self.buf[index..].iter().map(|b| b * volume).collect();
+                let buf_no_silence: Vec<T> = self.buf[index..]
+                    .iter()
+                    .map(|b| (*b).mul_amp(volume))
+                    .collect();
 
                 // Put the segment without silence at the beginning
                 self.buf[..self.buf_len].copy_from_slice(&buf_no_silence);
@@ -285,7 +292,7 @@ impl Decoder {
     fn adjust_buffer_size(&mut self, samples_length: usize) {
         if samples_length > self.buf.len() {
             self.buf.clear();
-            self.buf.resize(samples_length, 0.0);
+            self.buf.resize(samples_length, T::MID);
         }
         self.buf_len = samples_length;
     }
@@ -319,7 +326,7 @@ impl Decoder {
                     "Audio sources with more than 2 channels are not supported".to_owned(),
                 ));
             }
-            self.sample_buf = SampleBuffer::<f32>::new(duration as u64, spec);
+            self.sample_buf = SampleBuffer::<T>::new(duration as u64, spec);
         }
 
         self.sample_buf.copy_interleaved_ref(decoded);
@@ -331,8 +338,8 @@ impl Decoder {
 
                 let mut i = 0;
                 for sample in self.sample_buf.samples().iter() {
-                    self.buf[i] = *sample * self.volume;
-                    self.buf[i + 1] = *sample * self.volume;
+                    self.buf[i] = (*sample).mul_amp(self.volume);
+                    self.buf[i + 1] = (*sample).mul_amp(self.volume);
                     i += 2;
                 }
             }
@@ -340,14 +347,16 @@ impl Decoder {
                 self.adjust_buffer_size(samples_len / 2);
 
                 for (i, sample) in self.sample_buf.samples().chunks_exact(2).enumerate() {
-                    self.buf[i] = (sample[0] + sample[1]) / 2.0 * self.volume;
+                    self.buf[i] = (sample[0] + sample[1])
+                        .mul_amp(0.5_f32.to_sample())
+                        .mul_amp(self.volume);
                 }
             }
             _ => {
                 self.adjust_buffer_size(samples_len);
 
                 for (i, sample) in self.sample_buf.samples().iter().enumerate() {
-                    self.buf[i] = *sample * self.volume;
+                    self.buf[i] = (*sample).mul_amp(self.volume);
                 }
             }
         }
@@ -355,13 +364,13 @@ impl Decoder {
         Ok(())
     }
 
-    pub(crate) fn current(&self) -> &[f32] {
+    pub(crate) fn current(&self) -> &[T] {
         &self.buf[..self.buf_len]
     }
 
-    pub(crate) fn next(&mut self) -> Result<Option<&[f32]>, DecoderError> {
+    pub(crate) fn next(&mut self) -> Result<Option<&[T]>, DecoderError> {
         if self.paused {
-            self.buf.fill(0.0);
+            self.buf.fill(T::MID);
         } else {
             loop {
                 let packet = loop {

@@ -3,7 +3,7 @@ use cpal::{
     traits::{DeviceTrait, HostTrait, StreamTrait},
     BackendSpecificError, BuildStreamError, ChannelCount, DefaultStreamConfigError, Device,
     DevicesError, Host, HostId, HostUnavailable, OutputCallbackInfo, PlayStreamError, SampleFormat,
-    SampleRate, Stream, StreamConfig, StreamError, SupportedStreamConfig,
+    SampleRate, SizedSample, Stream, StreamConfig, StreamError, SupportedStreamConfig,
     SupportedStreamConfigsError,
 };
 use rb::{RbConsumer, RbProducer, SpscRb, RB};
@@ -179,11 +179,11 @@ impl OutputBuilder {
         Ok(default_config)
     }
 
-    pub fn new_output(
+    pub fn new_output<T: SizedSample + Default + Send + 'static>(
         &self,
         device_name: Option<String>,
         config: SupportedStreamConfig,
-    ) -> Result<AudioOutput, AudioOutputError> {
+    ) -> Result<AudioOutput<T>, AudioOutputError> {
         *self.current_device.write().expect("lock poisoned") = device_name.clone();
         let default_device = self
             .host
@@ -215,8 +215,8 @@ impl OutputBuilder {
     }
 }
 
-pub struct AudioOutput {
-    ring_buf_producer: Option<rb::Producer<f32>>,
+pub struct AudioOutput<T> {
+    ring_buf_producer: Option<rb::Producer<T>>,
     stream: Option<Stream>,
     on_device_changed: Arc<Box<dyn Fn() + Send + Sync>>,
     on_error: Arc<Box<dyn Fn(BackendSpecificError) + Send + Sync>>,
@@ -224,7 +224,7 @@ pub struct AudioOutput {
     config: SupportedStreamConfig,
 }
 
-impl AudioOutput {
+impl<T: SizedSample + Default + Send + 'static> AudioOutput<T> {
     pub(crate) fn new(
         device: Device,
         config: SupportedStreamConfig,
@@ -247,7 +247,7 @@ impl AudioOutput {
         }
 
         let buffer_ms = 200;
-        let ring_buf = SpscRb::<f32>::new(
+        let ring_buf = SpscRb::<T>::new(
             ((buffer_ms * self.config.sample_rate().0 as usize) / 1000)
                 * self.config.channels() as usize,
         );
@@ -265,7 +265,7 @@ impl AudioOutput {
         self.stream = None;
     }
 
-    pub fn write(&mut self, mut samples: &[f32]) {
+    pub fn write(&mut self, mut samples: &[T]) {
         if let Some(producer) = &self.ring_buf_producer {
             loop {
                 match producer.write_blocking_timeout(samples, Duration::from_millis(1000)) {
@@ -286,7 +286,7 @@ impl AudioOutput {
 
     fn create_stream(
         &self,
-        ring_buf_consumer: rb::Consumer<f32>,
+        ring_buf_consumer: rb::Consumer<T>,
     ) -> Result<Stream, AudioOutputError> {
         let channels = self.config.channels();
         let config = StreamConfig {
@@ -297,14 +297,14 @@ impl AudioOutput {
         info!("Output channels = {channels}");
         info!("Output sample rate = {}", self.config.sample_rate().0);
 
-        let filler = 0.0;
+        let filler = T::EQUILIBRIUM;
         let on_error = self.on_error.clone();
         let on_device_changed = self.on_device_changed.clone();
         let stream = self
             .device
             .build_output_stream(
                 &config,
-                move |data: &mut [f32], _: &OutputCallbackInfo| {
+                move |data: &mut [T], _: &OutputCallbackInfo| {
                     // Write out as many samples as possible from the ring buffer to the audio output.
                     let written = ring_buf_consumer.read(data).unwrap_or(0);
                     // Mute any remaining samples.

@@ -13,8 +13,14 @@ struct ResampleDecoderInner<T: Sample + DaspSample> {
     out_buf: Vec<T>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DecoderResult {
+    Finished,
+    Unfinished,
+}
+
 impl<T: Sample + DaspSample + ConvertibleSample + rubato::Sample> ResampleDecoderInner<T> {
-    fn next(&mut self, decoder: &mut Decoder<T>) -> Result<Option<&[T]>, DecoderError> {
+    fn next(&mut self, decoder: &mut Decoder<T>) -> Result<DecoderResult, DecoderError> {
         let mut cur_frame = decoder.current();
 
         while !self.in_buf.is_full() {
@@ -27,7 +33,7 @@ impl<T: Sample + DaspSample + ConvertibleSample + rubato::Sample> ResampleDecode
                         self.written = 0;
                     }
                     None => {
-                        return Ok(None);
+                        return Ok(DecoderResult::Finished);
                     }
                 }
             }
@@ -39,7 +45,7 @@ impl<T: Sample + DaspSample + ConvertibleSample + rubato::Sample> ResampleDecode
         self.in_buf.reset();
 
         self.out_buf.fill_from_deinterleaved(&self.resampler_buf);
-        Ok(Some(&self.out_buf))
+        Ok(DecoderResult::Unfinished)
     }
 
     fn current(&self) -> &[T] {
@@ -116,7 +122,6 @@ impl<T: Sample + DaspSample + ConvertibleSample + rubato::Sample> ResampledDecod
         let n_frames = resampler.input_frames_next();
 
         let resampler = ResampledDecoderImpl::Resampled(ResampleDecoderInner {
-            // decoder,
             written: 0,
             resampler_buf,
             out_buf: Vec::with_capacity(n_frames * self.channels),
@@ -152,10 +157,13 @@ impl<T: Sample + DaspSample + ConvertibleSample + rubato::Sample> ResampledDecod
     pub fn decode_next_frame<'a>(
         &'a mut self,
         decoder: &'a mut Decoder<T>,
-    ) -> Result<Option<&[T]>, DecoderError> {
+    ) -> Result<DecoderResult, DecoderError> {
         match &mut self.decoder_inner {
             ResampledDecoderImpl::Resampled(decoder_inner) => decoder_inner.next(decoder),
-            ResampledDecoderImpl::NotResampled => decoder.next(),
+            ResampledDecoderImpl::NotResampled => Ok(match decoder.next()? {
+                Some(_) => DecoderResult::Unfinished,
+                None => DecoderResult::Finished,
+            }),
         }
     }
 }

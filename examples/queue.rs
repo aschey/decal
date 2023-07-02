@@ -2,7 +2,7 @@ use std::{error::Error, fs::File, io::BufReader, path::Path, time::Duration};
 
 use cpal::{SampleFormat, SampleRate};
 use dcal::{
-    decoder::{Decoder, DecoderError, ReadSeekSource, ResampledDecoder},
+    decoder::{Decoder, DecoderError, DecoderResult, ReadSeekSource, ResampledDecoder},
     output::{AudioOutput, OutputBuilder, RequestedOutputConfig},
 };
 use tap::TapFallible;
@@ -81,7 +81,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 // Pre-fill output buffer before starting the stream
                 while resampled.current(&decoder).len() <= output.buffer_space_available() {
                     output.write(resampled.current(&decoder)).unwrap();
-                    if resampled.decode_next_frame(&mut decoder)?.is_none() {
+                    if resampled.decode_next_frame(&mut decoder)? == DecoderResult::Finished {
                         break;
                     }
                 }
@@ -103,8 +103,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 
                 output.write_blocking(resampled.current(&decoder));
                 match resampled.decode_next_frame(&mut decoder) {
-                    Ok(None) => break true,
-                    Ok(Some(_)) => {}
+                    Ok(DecoderResult::Finished) => break true,
+                    Ok(DecoderResult::Unfinished) => {}
                     Err(DecoderError::ResetRequired) => {
                         break false;
                     }

@@ -1,6 +1,6 @@
 use cpal::{SampleFormat, SampleRate};
 use dcal::{
-    decoder::{Decoder, ReadSeekSource, ResampledDecoder},
+    decoder::{Decoder, DecoderResult, ReadSeekSource, ResampledDecoder},
     output::{OutputBuilder, RequestedOutputConfig},
 };
 use std::{error::Error, fs::File, io::BufReader, path::Path};
@@ -50,7 +50,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Pre-fill output buffer before starting the stream
     while resampled.current(&decoder).len() <= output.buffer_space_available() {
         output.write(resampled.current(&decoder)).unwrap();
-        if resampled.decode_next_frame(&mut decoder)?.is_none() {
+        if resampled.decode_next_frame(&mut decoder)? == DecoderResult::Finished {
             break;
         }
     }
@@ -59,7 +59,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     loop {
         output.write_blocking(resampled.current(&decoder));
-        if resampled.decode_next_frame(&mut decoder)?.is_none() {
+        if resampled.decode_next_frame(&mut decoder)? == DecoderResult::Finished {
             // Write out any remaining data
             output.write_blocking(resampled.flush());
             // Wait for all data to reach the audio device

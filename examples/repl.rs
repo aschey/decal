@@ -24,6 +24,7 @@ enum Command {
     Next,
     Stop,
     Seek(Duration),
+    Reset,
 }
 
 fn main() -> io::Result<()> {
@@ -88,9 +89,16 @@ fn main() -> io::Result<()> {
     let prompt = DefaultPrompt::default();
 
     let (queue_tx, queue_rx) = mpsc::channel();
-    let (command_tx, command_rx) = mpsc::channel();
+    let (command_tx, command_rx) = mpsc::sync_channel(32);
+    let command_tx_ = command_tx.clone();
+    let output_builder = OutputBuilder::new(
+        move || {
+            command_tx_.send(Command::Reset).unwrap();
+        },
+        |err| error!("Output error: {err}"),
+    );
 
-    std::thread::spawn(move || event_loop(queue_rx, command_rx).unwrap());
+    std::thread::spawn(move || event_loop(output_builder, queue_rx, command_rx).unwrap());
 
     loop {
         let sig = line_editor.read_line(&prompt)?;
@@ -135,19 +143,10 @@ fn main() -> io::Result<()> {
 }
 
 fn event_loop(
+    output_builder: OutputBuilder,
     queue_rx: mpsc::Receiver<String>,
     command_rx: mpsc::Receiver<Command>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
-    let output_builder = OutputBuilder::new(
-        move || {
-            // reset_tx
-            //     .send(())
-            //     .tap_err(|e| error!("Error sending reset signal: {e}"))
-            //     .ok();
-        },
-        |err| error!("Output error: {err}"),
-    );
-
     let mut output_config = output_builder.default_output_config()?;
 
     let mut output: AudioOutput<f32> =
@@ -157,52 +156,55 @@ fn event_loop(
         output_config.sample_rate().0 as usize,
         output_config.channels() as usize,
     );
+    let mut current_file: String;
+    let mut reset: bool;
+    let mut paused = false;
+    let mut current_position = Duration::default();
+    let mut seek_position: Option<Duration> = None;
 
     loop {
-        let mut decoder = match queue_rx.try_recv() {
+        match queue_rx.try_recv() {
             Ok(file_name) => {
-                let file = File::open(&file_name)?;
-                let file_len = file.metadata()?.len();
-
-                let extension = Path::new(&file_name)
-                    .extension()
-                    .unwrap()
-                    .to_string_lossy()
-                    .to_string();
-                let reader = BufReader::new(file);
-                let source = ReadSeekSource::new(reader, Some(file_len), Some(extension));
-                let mut decoder = Decoder::<f32>::new(
-                    Box::new(source),
-                    1.0,
-                    output_config.channels() as usize,
-                    None,
-                )?;
-                resampled.initialize(&mut decoder);
-                decoder
+                current_file = file_name;
+                reset = false;
             }
             Err(TryRecvError::Empty) => {
+                reset = true;
                 output.write_blocking(resampled.flush());
                 std::thread::sleep(output.buffer_duration());
                 output.stop();
 
-                let file_name = queue_rx.recv()?;
-                let file = File::open(&file_name)?;
-                let file_len = file.metadata()?.len();
+                current_file = queue_rx.recv()?;
+            }
+            Err(TryRecvError::Disconnected) => {
+                return Ok(());
+            }
+        };
 
-                let extension = Path::new(&file_name)
-                    .extension()
-                    .unwrap()
-                    .to_string_lossy()
-                    .to_string();
-                let reader = BufReader::new(file);
-                let source = ReadSeekSource::new(reader, Some(file_len), Some(extension));
+        loop {
+            let file = File::open(&current_file)?;
+            let file_len = file.metadata()?.len();
 
-                let mut decoder = Decoder::<f32>::new(
-                    Box::new(source),
-                    1.0,
-                    output_config.channels() as usize,
-                    None,
-                )?;
+            let extension = Path::new(&current_file)
+                .extension()
+                .unwrap()
+                .to_string_lossy()
+                .to_string();
+            let reader = BufReader::new(file);
+            let source = Box::new(ReadSeekSource::new(reader, Some(file_len), Some(extension)));
+
+            let mut decoder =
+                Decoder::<f32>::new(source, 1.0, output_config.channels() as usize, None)?;
+            if let Some(seek_position) = seek_position.take() {
+                decoder.seek(seek_position).unwrap();
+            }
+            if paused {
+                decoder.pause();
+            }
+
+            if reset {
+                reset = false;
+
                 output_config = output_builder.find_closest_config(
                     None,
                     RequestedOutputConfig {
@@ -218,6 +220,7 @@ fn event_loop(
                     output_config.sample_rate().0 as usize,
                     output_config.channels() as usize,
                 );
+
                 resampled.initialize(&mut decoder);
 
                 // Pre-fill output buffer before starting the stream
@@ -227,52 +230,60 @@ fn event_loop(
                         break;
                     }
                 }
+
                 output.start()?;
+            } else {
+                if decoder.sample_rate() != resampled.in_sample_rate() {
+                    output.write_blocking(resampled.flush());
+                }
+                resampled.initialize(&mut decoder);
+            }
 
-                decoder
-            }
-            Err(TryRecvError::Disconnected) => {
-                return Ok(());
-            }
-        };
+            let go_next = loop {
+                if let Ok(command) = command_rx.try_recv() {
+                    match command {
+                        Command::Pause => {
+                            decoder.pause();
+                            paused = true;
+                        }
+                        Command::Play => {
+                            decoder.resume();
+                            paused = false;
+                        }
+                        Command::Next => {
+                            break true;
+                        }
+                        Command::Stop => {
+                            return Ok(());
+                        }
+                        Command::Seek(time) => {
+                            decoder.seek(time).unwrap();
+                        }
+                        Command::Reset => {
+                            reset = true;
+                            seek_position = Some(current_position);
+                            break false;
+                        }
+                    }
+                }
 
-        loop {
-            // if reset_rx.try_recv().is_ok() {
-            //     seek_position = Some(current_position);
-            //     initialized = false;
-            //     break false;
-            // }
-            if let Ok(command) = command_rx.try_recv() {
-                match command {
-                    Command::Pause => {
-                        decoder.pause();
+                output.write_blocking(resampled.current(&decoder));
+                match resampled.decode_next_frame(&mut decoder) {
+                    Ok(DecoderResult::Finished) => break true,
+                    Ok(DecoderResult::Unfinished) => {}
+                    Err(DecoderError::ResetRequired) => {
+                        break false;
                     }
-                    Command::Play => {
-                        decoder.resume();
-                    }
-                    Command::Next => {
-                        break;
-                    }
-                    Command::Stop => {
-                        return Ok(());
-                    }
-                    Command::Seek(time) => {
-                        decoder.seek(time).unwrap();
+                    Err(e) => {
+                        return Err(e)?;
                     }
                 }
+                current_position = decoder.current_position().position;
+            };
+
+            if go_next {
+                break;
             }
-            output.write_blocking(resampled.current(&decoder));
-            match resampled.decode_next_frame(&mut decoder) {
-                Ok(DecoderResult::Finished) => break,
-                Ok(DecoderResult::Unfinished) => {}
-                Err(DecoderError::ResetRequired) => {
-                    break; //false;
-                }
-                Err(e) => {
-                    return Err(e)?;
-                }
-            }
-            // current_position = decoder.current_position().position;
         }
     }
 }

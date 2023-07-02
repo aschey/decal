@@ -223,6 +223,7 @@ pub struct AudioOutput<T> {
     on_error: Arc<Box<dyn Fn(BackendSpecificError) + Send + Sync>>,
     device: Device,
     config: SupportedStreamConfig,
+    buffer_duration: Duration,
 }
 
 impl<T: SizedSample + Default + Send + 'static> AudioOutput<T> {
@@ -232,7 +233,8 @@ impl<T: SizedSample + Default + Send + 'static> AudioOutput<T> {
         on_device_changed: Arc<Box<dyn Fn() + Send + Sync>>,
         on_error: Arc<Box<dyn Fn(BackendSpecificError) + Send + Sync>>,
     ) -> Self {
-        let buffer_ms = 200;
+        let buffer_duration = Duration::from_millis(200);
+        let buffer_ms: usize = buffer_duration.as_millis().try_into().unwrap();
         let ring_buf = SpscRb::<T>::new(
             ((buffer_ms * config.sample_rate().0 as usize) / 1000) * config.channels() as usize,
         );
@@ -245,6 +247,7 @@ impl<T: SizedSample + Default + Send + 'static> AudioOutput<T> {
             config,
             on_device_changed,
             on_error,
+            buffer_duration,
         }
     }
 
@@ -281,6 +284,10 @@ impl<T: SizedSample + Default + Send + 'static> AudioOutput<T> {
 
     pub fn write(&self, samples: &[T]) -> Result<usize, rb::RbError> {
         self.ring_buf_producer.write(samples)
+    }
+
+    pub fn buffer_duration(&self) -> Duration {
+        self.buffer_duration
     }
 
     pub fn write_blocking(&self, mut samples: &[T]) {

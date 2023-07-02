@@ -59,7 +59,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     loop {
         output.write_blocking(resampled.current(&decoder));
         if resampled.decode_next_frame(&mut decoder)?.is_none() {
-            std::thread::sleep(Duration::from_millis(200));
+            std::thread::sleep(output.buffer_duration());
             return Ok(());
         }
     }

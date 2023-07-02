@@ -98,5 +98,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
         }
     }
+
+    std::thread::sleep(output.buffer_duration());
     Ok(())
 }

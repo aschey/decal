@@ -1,10 +1,9 @@
-use std::{error::Error, fs::File, io::BufReader, path::Path, time::Duration};
-
 use cpal::{SampleFormat, SampleRate};
 use dcal::{
     decoder::{Decoder, ReadSeekSource, ResampledDecoder},
     output::{OutputBuilder, RequestedOutputConfig},
 };
+use std::{error::Error, fs::File, io::BufReader, path::Path};
 use tracing::error;
 
 fn main() -> Result<(), Box<dyn Error>> {

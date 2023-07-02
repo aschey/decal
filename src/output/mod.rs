@@ -291,10 +291,11 @@ impl<T: SizedSample + Default + Send + 'static> AudioOutput<T> {
     }
 
     pub fn write_blocking(&self, mut samples: &[T]) {
+        let timeout = self.buffer_duration;
         loop {
             match self
                 .ring_buf_producer
-                .write_blocking_timeout(samples, Duration::from_millis(1000))
+                .write_blocking_timeout(samples, timeout)
             {
                 Ok(Some(written)) => {
                     samples = &samples[written..];

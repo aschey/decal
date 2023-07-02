@@ -4,7 +4,6 @@ use dasp::sample::Sample as DaspSample;
 use rubato::{FftFixedInOut, Resampler};
 use symphonia::core::conv::ConvertibleSample;
 use symphonia::core::sample::Sample;
-use tracing::info;
 
 struct ResampleDecoderInner<T: Sample + DaspSample> {
     written: usize,

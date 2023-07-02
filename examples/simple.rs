@@ -48,10 +48,12 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let mut output = output_builder.new_output(None, output_config)?;
 
-    // Prefill output buffer before starting the stream
+    // Pre-fill output buffer before starting the stream
     while resampled.current(&decoder).len() <= output.buffer_space_available() {
         output.write(resampled.current(&decoder)).unwrap();
-        resampled.decode_next_frame(&mut decoder)?;
+        if resampled.decode_next_frame(&mut decoder)?.is_none() {
+            break;
+        }
     }
 
     output.start()?;

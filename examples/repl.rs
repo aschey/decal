@@ -14,6 +14,7 @@ use std::{
     io::{self, BufReader},
     path::Path,
     sync::mpsc::{self, TryRecvError},
+    time::Duration,
 };
 use tracing::error;
 
@@ -22,6 +23,7 @@ enum Command {
     Pause,
     Next,
     Stop,
+    Seek(Duration),
 }
 
 fn main() -> io::Result<()> {
@@ -29,6 +31,7 @@ fn main() -> io::Result<()> {
         "add".into(),
         "play".into(),
         "pause".into(),
+        "seek".into(),
         "next".into(),
         "stop".into(),
     ];
@@ -46,6 +49,13 @@ fn main() -> io::Result<()> {
     println!(
         "pause            {}",
         "Pauses the queue".with(Color::DarkGrey).dim()
+    );
+    println!(
+        "seek {}   {}",
+        "<seconds>".cyan(),
+        "Seek to a specific point in the song"
+            .with(Color::DarkGrey)
+            .dim()
     );
     println!(
         "next             {}",
@@ -89,26 +99,21 @@ fn main() -> io::Result<()> {
                 let buffer = buffer.to_lowercase();
                 match (buffer.as_str(), buffer.split_once(' ')) {
                     (_, Some(("add", val))) => {
-                        let file = File::open(val)?;
-                        let file_len = file.metadata()?.len();
-
-                        let extension = Path::new(val)
-                            .extension()
-                            .unwrap()
-                            .to_string_lossy()
-                            .to_string();
-                        let reader = BufReader::new(file);
-                        let source = ReadSeekSource::new(reader, Some(file_len), Some(extension));
-                        queue_tx.send(source).unwrap();
+                        queue_tx.send(val.to_owned()).unwrap();
                     }
-                    ("add", None) => {
-                        println!("Command 'add' requires one argument");
+                    (val @ "add" | val @ "seek", None) => {
+                        println!("Command '{val}' requires one argument");
                     }
                     ("play", None) => {
                         command_tx.send(Command::Play).unwrap();
                     }
                     ("pause", None) => {
                         command_tx.send(Command::Pause).unwrap();
+                    }
+                    (_, Some(("seek", val))) => {
+                        command_tx
+                            .send(Command::Seek(Duration::from_secs(val.parse().unwrap())))
+                            .unwrap();
                     }
                     ("next", None) => {
                         command_tx.send(Command::Next).unwrap();
@@ -130,7 +135,7 @@ fn main() -> io::Result<()> {
 }
 
 fn event_loop(
-    queue_rx: mpsc::Receiver<ReadSeekSource<BufReader<File>>>,
+    queue_rx: mpsc::Receiver<String>,
     command_rx: mpsc::Receiver<Command>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     let output_builder = OutputBuilder::new(
@@ -155,7 +160,17 @@ fn event_loop(
 
     loop {
         let mut decoder = match queue_rx.try_recv() {
-            Ok(source) => {
+            Ok(file_name) => {
+                let file = File::open(&file_name)?;
+                let file_len = file.metadata()?.len();
+
+                let extension = Path::new(&file_name)
+                    .extension()
+                    .unwrap()
+                    .to_string_lossy()
+                    .to_string();
+                let reader = BufReader::new(file);
+                let source = ReadSeekSource::new(reader, Some(file_len), Some(extension));
                 let mut decoder = Decoder::<f32>::new(
                     Box::new(source),
                     1.0,
@@ -170,7 +185,18 @@ fn event_loop(
                 std::thread::sleep(output.buffer_duration());
                 output.stop();
 
-                let source = queue_rx.recv()?;
+                let file_name = queue_rx.recv()?;
+                let file = File::open(&file_name)?;
+                let file_len = file.metadata()?.len();
+
+                let extension = Path::new(&file_name)
+                    .extension()
+                    .unwrap()
+                    .to_string_lossy()
+                    .to_string();
+                let reader = BufReader::new(file);
+                let source = ReadSeekSource::new(reader, Some(file_len), Some(extension));
+
                 let mut decoder = Decoder::<f32>::new(
                     Box::new(source),
                     1.0,
@@ -229,6 +255,9 @@ fn event_loop(
                     }
                     Command::Stop => {
                         return Ok(());
+                    }
+                    Command::Seek(time) => {
+                        decoder.seek(time).unwrap();
                     }
                 }
             }

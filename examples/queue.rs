@@ -65,7 +65,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
                 resampled.initialize(&mut decoder);
 
-                // Prefill output buffer before starting the stream
+                // Pre-fill output buffer before starting the stream
                 while resampled.current(&decoder).len() <= output.buffer_space_available() {
                     output.write(resampled.current(&decoder)).unwrap();
                     resampled.decode_next_frame(&mut decoder)?;
@@ -98,7 +98,9 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
         }
     }
-
+    // Write out any remaining data
+    output.write_blocking(resampled.flush());
+    // Wait for all data to reach the audio device
     std::thread::sleep(output.buffer_duration());
     Ok(())
 }

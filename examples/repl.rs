@@ -1,11 +1,12 @@
 use cpal::{SampleFormat, SampleRate};
+use crossterm::style::Stylize;
 use dcal::{
     decoder::{Decoder, DecoderError, DecoderResult, ReadSeekSource, ResampledDecoder},
     output::{AudioOutput, OutputBuilder, RequestedOutputConfig},
 };
 use reedline::{
-    default_emacs_keybindings, ColumnarMenu, DefaultCompleter, DefaultPrompt, Emacs, KeyCode,
-    KeyModifiers, Reedline, ReedlineEvent, ReedlineMenu, Signal,
+    default_emacs_keybindings, Color, ColumnarMenu, DefaultCompleter, DefaultPrompt, Emacs,
+    KeyCode, KeyModifiers, Reedline, ReedlineEvent, ReedlineMenu, Signal,
 };
 use std::{
     error::Error,
@@ -32,7 +33,29 @@ fn main() -> io::Result<()> {
         "stop".into(),
     ];
 
-    println!("Available commands:\nadd <file path>, play, pause, next, stop");
+    println!("\n{}", "Available Commands:".with(Color::Blue).bold());
+    println!(
+        "add {}  {}",
+        "<file path>".cyan(),
+        "Adds a song to the queue".with(Color::DarkGrey).dim()
+    );
+    println!(
+        "play             {}",
+        "Starts or resumes the queue".with(Color::DarkGrey)
+    );
+    println!(
+        "pause            {}",
+        "Pauses the queue".with(Color::DarkGrey).dim()
+    );
+    println!(
+        "next             {}",
+        "Skips to the next song".with(Color::DarkGrey).dim()
+    );
+    println!(
+        "stop             {}\n",
+        "Stops the queue".with(Color::DarkGrey).dim()
+    );
+
     let completer = Box::new(DefaultCompleter::new_with_wordlen(commands, 0));
     let completion_menu = Box::new(ColumnarMenu::default().with_name("completion_menu"));
 

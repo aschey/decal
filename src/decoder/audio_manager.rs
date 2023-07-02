@@ -1,198 +1,23 @@
-use crate::decoder::DecoderParams;
-use crate::output::{AudioOutput, AudioOutputError, OutputBuilder, RequestedOutputConfig};
-use cpal::SupportedStreamConfig;
+use super::DecoderError;
+use super::{channel_buffer::ChannelBuffer, vec_ext::VecExt, Decoder};
+use dasp::sample::Sample as DaspSample;
 use rubato::{FftFixedInOut, Resampler};
-use std::time::Duration;
+use symphonia::core::conv::ConvertibleSample;
+use symphonia::core::sample::Sample;
 use tracing::info;
 
-use super::DecoderError;
-use super::{channel_buffer::ChannelBuffer, source::Source, vec_ext::VecExt, Decoder};
-
-enum DecoderMode {
-    Resample,
-    NoResample,
-}
-
-pub struct AudioManager {
-    in_buf: ChannelBuffer,
-    out_buf: Vec<f32>,
-    input_sample_rate: usize,
-    output_builder: OutputBuilder,
-    device_name: Option<String>,
-    output: AudioOutput<f32>,
-    resampler: FftFixedInOut<f32>,
-    resampler_buf: Vec<Vec<f32>>,
-    volume: f32,
-    output_config: SupportedStreamConfig,
-    decoder_mode: DecoderMode,
+struct ResampleDecoderInner<T: Sample + DaspSample> {
     written: usize,
+    in_buf: ChannelBuffer<T>,
+    resampler: FftFixedInOut<T>,
+    resampler_buf: Vec<Vec<T>>,
+    out_buf: Vec<T>,
 }
 
-impl AudioManager {
-    pub fn new(output_builder: OutputBuilder, volume: f32) -> Result<Self, AudioOutputError> {
-        let output_config = output_builder.default_output_config()?;
-        let sample_rate = output_config.sample_rate().0 as usize;
-        let channels = output_config.channels() as usize;
-
-        let resampler = FftFixedInOut::<f32>::new(
-            sample_rate,
-            sample_rate,
-            1024,
-            output_config.channels() as usize,
-        )
-        .expect("failed to create resampler");
-
-        let resampler_buf = resampler.input_buffer_allocate();
-        let n_frames = resampler.input_frames_next();
-        let output = output_builder.new_output(None, output_config.clone())?;
-
-        Ok(Self {
-            output_builder,
-            in_buf: ChannelBuffer::new(n_frames, channels),
-            out_buf: Vec::with_capacity(n_frames * channels),
-            input_sample_rate: sample_rate,
-            resampler,
-            resampler_buf,
-            output,
-            volume,
-            output_config,
-            device_name: None,
-            decoder_mode: DecoderMode::NoResample,
-            written: 0,
-        })
-    }
-
-    fn set_resampler(&mut self, resample_chunk_size: usize) {
-        self.resampler = FftFixedInOut::<f32>::new(
-            self.input_sample_rate,
-            self.output_config.sample_rate().0 as usize,
-            resample_chunk_size,
-            self.output_config.channels() as usize,
-        )
-        .expect("failed to create resampler");
-        let n_frames = self.resampler.input_frames_next();
-        self.resampler_buf = self.resampler.input_buffer_allocate();
-
-        let channels = self.output_config.channels() as usize;
-        self.in_buf = ChannelBuffer::new(n_frames, channels);
-        self.out_buf = Vec::with_capacity(n_frames * channels);
-    }
-
-    pub fn set_device_name(&mut self, device_name: Option<String>) {
-        self.device_name = device_name;
-    }
-
-    pub fn reset(
-        &mut self,
-        output_config: RequestedOutputConfig,
-        resample_chunk_size: usize,
-    ) -> Result<(), AudioOutputError> {
-        self.output_config = self
-            .output_builder
-            .find_closest_config(None, output_config)?;
-        self.output = self
-            .output_builder
-            .new_output(None, self.output_config.clone())?;
-        self.set_resampler(resample_chunk_size);
-        self.start()?;
-
-        Ok(())
-    }
-
-    pub fn start(&mut self) -> Result<(), AudioOutputError> {
-        self.output.start()
-    }
-
-    pub fn stop(&mut self) {
-        self.output.stop();
-    }
-
-    pub fn play_remaining(&mut self) {
-        if self.in_buf.position() > 0 {
-            self.in_buf.silence_remainder();
-            self.write_output();
-        }
-    }
-
-    fn write_output(&mut self) {
-        // This shouldn't panic as long as we calculated the number of channels and frames correctly
-        self.resampler
-            .process_into_buffer(self.in_buf.inner(), &mut self.resampler_buf, None)
-            .expect("number of frames was not correctly calculated");
-        self.in_buf.reset();
-
-        self.out_buf.fill_from_deinterleaved(&self.resampler_buf);
-        self.output.write(&self.out_buf);
-    }
-
-    pub fn initialize_decoder(
-        &mut self,
-        source: Box<dyn Source>,
-        volume: Option<f32>,
-        start_position: Option<Duration>,
-    ) -> Result<Decoder<f32>, DecoderError> {
-        Decoder::new(DecoderParams {
-            source,
-            volume: volume.unwrap_or(self.volume),
-            output_channels: self.output_config.channels() as usize,
-            start_position,
-        })
-    }
-
-    pub fn decode_source(&mut self, decoder: &Decoder<f32>, resample_chunk_size: usize) {
-        self.volume = decoder.volume();
-
-        let input_sample_rate = decoder.sample_rate();
-        if input_sample_rate != self.input_sample_rate {
-            self.play_remaining();
-            self.input_sample_rate = input_sample_rate;
-            self.set_resampler(resample_chunk_size);
-        }
-
-        if decoder.sample_rate() != self.output_config.sample_rate().0 as usize {
-            info!("Resampling source");
-            self.decoder_mode = DecoderMode::Resample;
-            self.written = 0;
-            // self.decode_resample(decoder);
-        } else {
-            info!("Not resampling source");
-            self.decoder_mode = DecoderMode::NoResample;
-            self.output.write(decoder.current());
-            // self.decode_no_resample(decoder);
-        }
-        // self.volume = decoder.volume();
-        // info!("Finished decoding");
-        // let stop_position = decoder.current_position();
-        // info!("Stopped decoding at {stop_position:?}");
-
-        // stop_position.position
-    }
-
-    pub fn decode_next(&mut self, decoder: &mut Decoder<f32>) -> Result<usize, DecoderError> {
-        match self.decoder_mode {
-            DecoderMode::Resample => self.decode_resample(decoder),
-            DecoderMode::NoResample => self.decode_no_resample(decoder),
-        }
-    }
-
-    fn decode_no_resample(&mut self, decoder: &mut Decoder<f32>) -> Result<usize, DecoderError> {
-        // self.output.write(decoder.current());
-        // loop {
-        match decoder.next()? {
-            Some(data) => {
-                self.output.write(data);
-                Ok(data.len())
-            }
-            None => Ok(0),
-        }
-        // }
-    }
-
-    fn decode_resample(&mut self, decoder: &mut Decoder<f32>) -> Result<usize, DecoderError> {
+impl<T: Sample + DaspSample + ConvertibleSample + rubato::Sample> ResampleDecoderInner<T> {
+    fn next(&mut self, decoder: &mut Decoder<T>) -> Result<Option<&[T]>, DecoderError> {
         let mut cur_frame = decoder.current();
-        // let mut written = 0;
 
-        // loop {
         while !self.in_buf.is_full() {
             self.written += self.in_buf.fill_from_slice(&cur_frame[self.written..]);
 
@@ -202,17 +27,136 @@ impl AudioManager {
                         cur_frame = next;
                         self.written = 0;
                     }
-                    None => return Ok(0),
-                    // Err(e) => {
-                    //     error!("Error while decoding: {e:?}");
-                    //     return;
-                    // }
+                    None => {
+                        return Ok(None);
+                    }
                 }
             }
         }
 
-        self.write_output();
-        Ok(cur_frame.len())
-        // }
+        self.resampler
+            .process_into_buffer(self.in_buf.inner(), &mut self.resampler_buf, None)
+            .expect("number of frames was not correctly calculated");
+        self.in_buf.reset();
+
+        self.out_buf.fill_from_deinterleaved(&self.resampler_buf);
+        Ok(Some(&self.out_buf))
+    }
+
+    fn current(&self) -> &[T] {
+        &self.out_buf
+    }
+
+    fn flush(&mut self) -> &[T] {
+        if self.in_buf.position() > 0 {
+            self.in_buf.silence_remainder();
+            self.resampler
+                .process_into_buffer(self.in_buf.inner(), &mut self.resampler_buf, None)
+                .expect("number of frames was not correctly calculated");
+            self.in_buf.reset();
+            &self.out_buf
+        } else {
+            &[]
+        }
+    }
+}
+
+#[allow(clippy::large_enum_variant)]
+enum ResampledDecoderImpl<T: Sample + DaspSample> {
+    Resampled(ResampleDecoderInner<T>),
+    NotResampled,
+}
+
+pub struct ResampledDecoder<T: Sample + DaspSample> {
+    decoder_inner: ResampledDecoderImpl<T>,
+    in_sample_rate: usize,
+    out_sample_rate: usize,
+    channels: usize,
+}
+
+impl<T: Sample + DaspSample + ConvertibleSample + rubato::Sample> ResampledDecoder<T> {
+    pub fn new(out_sample_rate: usize, channels: usize) -> Self {
+        Self {
+            decoder_inner: ResampledDecoderImpl::NotResampled,
+            in_sample_rate: out_sample_rate,
+            out_sample_rate,
+            channels,
+        }
+    }
+
+    pub fn initialize(&mut self, decoder: &mut Decoder<T>) {
+        let current_in_rate = self.in_sample_rate;
+        self.in_sample_rate = decoder.sample_rate();
+        match &mut self.decoder_inner {
+            ResampledDecoderImpl::NotResampled => {
+                self.initialize_resampler(decoder);
+            }
+            ResampledDecoderImpl::Resampled(inner) => {
+                if self.in_sample_rate != self.out_sample_rate
+                    && self.in_sample_rate == current_in_rate
+                {
+                    inner.written = 0;
+                } else if self.in_sample_rate == self.out_sample_rate {
+                    self.decoder_inner = ResampledDecoderImpl::NotResampled;
+                } else {
+                    self.initialize_resampler(decoder);
+                }
+            }
+        }
+    }
+
+    fn initialize_resampler(&mut self, decoder: &mut Decoder<T>) {
+        let resampler = FftFixedInOut::<T>::new(
+            self.in_sample_rate,
+            self.out_sample_rate,
+            1024,
+            self.channels,
+        )
+        .expect("failed to create resampler");
+        let resampler_buf = resampler.input_buffer_allocate();
+        let n_frames = resampler.input_frames_next();
+
+        let resampler = ResampledDecoderImpl::Resampled(ResampleDecoderInner {
+            // decoder,
+            written: 0,
+            resampler_buf,
+            out_buf: Vec::with_capacity(n_frames * self.channels),
+            in_buf: ChannelBuffer::new(n_frames, self.channels),
+            resampler,
+        });
+        self.decoder_inner = resampler;
+        self.decode_next_frame(decoder).unwrap();
+    }
+
+    pub fn in_sample_rate(&self) -> usize {
+        self.in_sample_rate
+    }
+
+    pub fn out_sample_rate(&self) -> usize {
+        self.out_sample_rate
+    }
+
+    pub fn current<'a>(&'a self, decoder: &'a Decoder<T>) -> &[T] {
+        match &self.decoder_inner {
+            ResampledDecoderImpl::Resampled(decoder_inner) => decoder_inner.current(),
+            ResampledDecoderImpl::NotResampled => decoder.current(),
+        }
+    }
+
+    pub fn flush(&mut self) -> &[T] {
+        match &mut self.decoder_inner {
+            ResampledDecoderImpl::Resampled(decoder) => decoder.flush(),
+            ResampledDecoderImpl::NotResampled => &[],
+        }
+    }
+
+    pub fn decode_next_frame<'a>(
+        &'a mut self,
+        decoder: &'a mut Decoder<T>,
+    ) -> Result<Option<&[T]>, DecoderError> {
+        match &mut self.decoder_inner {
+            ResampledDecoderImpl::Resampled(decoder_inner) => decoder_inner.next(decoder),
+            ResampledDecoderImpl::NotResampled => decoder.next(),
+        }
     }
 }

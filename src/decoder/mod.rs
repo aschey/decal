@@ -1,6 +1,4 @@
 use self::source::Source;
-use crate::output::RequestedOutputConfig;
-use cpal::{SampleFormat, SampleRate};
 use dasp::sample::Sample as DaspSample;
 use std::{
     io,
@@ -43,20 +41,14 @@ pub enum DecoderError {
     DecodeError(symphonia::core::errors::Error),
     #[error("Recoverable error: {0}")]
     Recoverable(&'static str),
+    #[error("The decoder needs to be reset before continuing")]
+    ResetRequired,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CurrentPosition {
     pub position: Duration,
     pub retrieval_time: Option<Duration>,
-}
-
-#[derive(Debug)]
-pub struct DecoderParams<T: Sample + DaspSample> {
-    pub(crate) source: Box<dyn Source>,
-    pub(crate) volume: T::Float,
-    pub(crate) output_channels: usize,
-    pub(crate) start_position: Option<Duration>,
 }
 
 #[derive(PartialEq, Eq)]
@@ -81,19 +73,19 @@ pub struct Decoder<T: Sample + dasp::sample::Sample> {
     timestamp: u64,
     paused: bool,
     sample_rate: usize,
+    seek_required_ts: Option<u64>,
 }
 
 impl<T> Decoder<T>
 where
     T: Sample + dasp::sample::Sample + ConvertibleSample,
 {
-    pub fn new(params: DecoderParams<T>) -> Result<Self, DecoderError> {
-        let DecoderParams {
-            source,
-            volume,
-            output_channels,
-            start_position,
-        } = params;
+    pub fn new(
+        source: Box<dyn Source>,
+        volume: T::Float,
+        output_channels: usize,
+        start_position: Option<Duration>,
+    ) -> Result<Self, DecoderError> {
         let mut hint = Hint::new();
         if let Some(extension) = source.get_file_ext() {
             hint.with_extension(&extension);
@@ -151,13 +143,15 @@ where
             timestamp: 0,
             paused: false,
             sample_rate: 0,
+            seek_required_ts: None,
         };
         if let Some(start_position) = start_position {
             info!("Decoder seeking to {start_position:?}");
             // Stream may not be seekable
-            let _ = decoder
+            decoder
                 .seek(start_position)
-                .tap_err(|e| warn!("Unable to seek to {start_position:?}: {e:?}"));
+                .tap_err(|e| warn!("Unable to seek to {start_position:?}: {e:?}"))
+                .ok();
             decoder.initialize(InitializeOpt::PreserveSilence)?;
         } else {
             decoder.initialize(InitializeOpt::TrimSilence)?;
@@ -186,24 +180,20 @@ where
         self.sample_rate
     }
 
-    pub fn output_config(&self) -> RequestedOutputConfig {
-        RequestedOutputConfig {
-            sample_rate: Some(SampleRate(self.sample_rate as u32)),
-            channels: Some(2),
-            sample_format: Some(SampleFormat::F32),
-        }
-    }
-
     pub fn seek(&mut self, time: Duration) -> Result<SeekedTo, symphonia::core::errors::Error> {
         let position = self.current_position();
         let seek_result = match self.reader_seek(time) {
-            result @ Ok(_) => result,
+            Ok(result) => {
+                self.seek_required_ts = Some(result.required_ts);
+                Ok(result)
+            }
             Err(e) => {
                 // Seek was probably out of bounds
                 warn!("Error seeking: {e:?}. Resetting to previous position");
                 match self.reader_seek(position.position) {
                     Ok(seeked_to) => {
                         info!("Reset position to {seeked_to:?}");
+                        self.seek_required_ts = Some(seeked_to.required_ts);
                         // Reset succeeded, but send the original error back to the caller since the intended seek failed
                         Err(e)
                     }
@@ -305,6 +295,10 @@ where
                 // Decoder errors are recoverable, try the next packet
                 return Err(DecoderError::Recoverable(e));
             }
+            Err(Error::ResetRequired) => {
+                warn!("Decoder reset required");
+                return Err(DecoderError::ResetRequired);
+            }
             Err(e) => {
                 return Err(DecoderError::DecodeError(e));
             }
@@ -348,7 +342,7 @@ where
 
                 for (i, sample) in self.sample_buf.samples().chunks_exact(2).enumerate() {
                     self.buf[i] = (sample[0] + sample[1])
-                        .mul_amp(0.5_f32.to_sample())
+                        .mul_amp(0.5.to_sample())
                         .mul_amp(self.volume);
                 }
             }
@@ -377,6 +371,13 @@ where
                     match self.reader.next_packet() {
                         Ok(packet) => {
                             if packet.track_id() == self.track_id {
+                                if let Some(required_ts) = self.seek_required_ts {
+                                    if packet.ts() < required_ts {
+                                        continue;
+                                    } else {
+                                        self.seek_required_ts = None;
+                                    }
+                                }
                                 break packet;
                             }
                         }
@@ -384,9 +385,13 @@ where
                             if err.kind() == io::ErrorKind::UnexpectedEof
                                 && err.to_string() == "end of stream" =>
                         {
-                            // Do not treat "end of stream" as a fatal error. It's the currently only way a
+                            // Do not treat "end of stream" as a fatal error. It's currently the only way a
                             // format reader can indicate the media is complete.
                             return Ok(None);
+                        }
+                        Err(Error::ResetRequired) => {
+                            warn!("Decoder reset required");
+                            return Err(DecoderError::ResetRequired);
                         }
                         Err(e) => {
                             error!("Error reading next packet: {e:?}");

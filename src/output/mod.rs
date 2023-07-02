@@ -6,7 +6,7 @@ use cpal::{
     SampleRate, SizedSample, Stream, StreamConfig, StreamError, SupportedStreamConfig,
     SupportedStreamConfigsError,
 };
-use rb::{RbConsumer, RbProducer, SpscRb, RB};
+use rb::{RbConsumer, RbInspector, RbProducer, SpscRb, RB};
 use std::{
     sync::{Arc, RwLock},
     time::Duration,
@@ -33,9 +33,9 @@ pub enum AudioOutputError {
 }
 
 pub struct RequestedOutputConfig {
-    pub(crate) sample_rate: Option<SampleRate>,
-    pub(crate) channels: Option<ChannelCount>,
-    pub(crate) sample_format: Option<SampleFormat>,
+    pub sample_rate: Option<SampleRate>,
+    pub channels: Option<ChannelCount>,
+    pub sample_format: Option<SampleFormat>,
 }
 
 pub struct OutputBuilder {
@@ -216,7 +216,8 @@ impl OutputBuilder {
 }
 
 pub struct AudioOutput<T> {
-    ring_buf_producer: Option<rb::Producer<T>>,
+    ring_buf_producer: rb::Producer<T>,
+    ring_buf: SpscRb<T>,
     stream: Option<Stream>,
     on_device_changed: Arc<Box<dyn Fn() + Send + Sync>>,
     on_error: Arc<Box<dyn Fn(BackendSpecificError) + Send + Sync>>,
@@ -231,8 +232,14 @@ impl<T: SizedSample + Default + Send + 'static> AudioOutput<T> {
         on_device_changed: Arc<Box<dyn Fn() + Send + Sync>>,
         on_error: Arc<Box<dyn Fn(BackendSpecificError) + Send + Sync>>,
     ) -> Self {
+        let buffer_ms = 200;
+        let ring_buf = SpscRb::<T>::new(
+            ((buffer_ms * config.sample_rate().0 as usize) / 1000) * config.channels() as usize,
+        );
+
         Self {
-            ring_buf_producer: None,
+            ring_buf_producer: ring_buf.producer(),
+            ring_buf,
             stream: None,
             device,
             config,
@@ -246,16 +253,7 @@ impl<T: SizedSample + Default + Send + 'static> AudioOutput<T> {
             return Ok(());
         }
 
-        let buffer_ms = 200;
-        let ring_buf = SpscRb::<T>::new(
-            ((buffer_ms * self.config.sample_rate().0 as usize) / 1000)
-                * self.config.channels() as usize,
-        );
-        let (ring_buf_producer, ring_buf_consumer) = (ring_buf.producer(), ring_buf.consumer());
-
-        let stream = self.create_stream(ring_buf_consumer)?;
-
-        self.ring_buf_producer = Some(ring_buf_producer);
+        let stream = self.create_stream(self.ring_buf.consumer())?;
         self.stream = Some(stream);
 
         Ok(())
@@ -265,20 +263,41 @@ impl<T: SizedSample + Default + Send + 'static> AudioOutput<T> {
         self.stream = None;
     }
 
-    pub fn write(&mut self, mut samples: &[T]) {
-        if let Some(producer) = &self.ring_buf_producer {
-            loop {
-                match producer.write_blocking_timeout(samples, Duration::from_millis(1000)) {
-                    Ok(Some(written)) => {
-                        samples = &samples[written..];
-                    }
-                    Ok(None) => {
-                        break;
-                    }
-                    Err(_) => {
-                        info!("Consumer stalled. Terminating.");
-                        return;
-                    }
+    pub fn is_buffer_full(&self) -> bool {
+        self.ring_buf.is_full()
+    }
+
+    pub fn buffer_size(&self) -> usize {
+        self.ring_buf.count()
+    }
+
+    pub fn buffer_capacity(&self) -> usize {
+        self.ring_buf.capacity()
+    }
+
+    pub fn buffer_space_available(&self) -> usize {
+        self.ring_buf.slots_free()
+    }
+
+    pub fn write(&self, samples: &[T]) -> Result<usize, rb::RbError> {
+        self.ring_buf_producer.write(samples)
+    }
+
+    pub fn write_blocking(&self, mut samples: &[T]) {
+        loop {
+            match self
+                .ring_buf_producer
+                .write_blocking_timeout(samples, Duration::from_millis(1000))
+            {
+                Ok(Some(written)) => {
+                    samples = &samples[written..];
+                }
+                Ok(None) => {
+                    break;
+                }
+                Err(_) => {
+                    info!("Consumer stalled. Terminating.");
+                    return;
                 }
             }
         }
@@ -309,7 +328,7 @@ impl<T: SizedSample + Default + Send + 'static> AudioOutput<T> {
                     let written = ring_buf_consumer.read(data).unwrap_or(0);
                     // Mute any remaining samples.
                     if data.len() > written {
-                        warn!("Output buffer not full, muting remaining");
+                        warn!("Output buffer not full, muting remaining",);
                         data[written..].iter_mut().for_each(|s| *s = filler);
                     }
                 },

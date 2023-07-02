@@ -1,9 +1,9 @@
-pub(crate) trait VecExt {
-    fn fill_from_deinterleaved(&mut self, channels: &[Vec<f32>]);
+pub(crate) trait VecExt<T> {
+    fn fill_from_deinterleaved(&mut self, channels: &[Vec<T>]);
 }
 
-impl VecExt for Vec<f32> {
-    fn fill_from_deinterleaved(&mut self, deinterleaved: &[Vec<f32>]) {
+impl<T: Copy> VecExt<T> for Vec<T> {
+    fn fill_from_deinterleaved(&mut self, deinterleaved: &[Vec<T>]) {
         let out_len = deinterleaved[0].len();
         self.clear();
 

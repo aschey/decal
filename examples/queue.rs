@@ -28,10 +28,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let mut output: AudioOutput<f32> =
         output_builder.new_output::<f32>(None, output_config.clone())?;
-    let queue = vec![
-        "C:\\shared_files\\Music\\4 Strings\\Believe\\01 Intro.m4a",
-        "C:\\shared_files\\Music\\4 Strings\\Believe\\02 Take Me Away (Into The Night).m4a",
-    ];
+    let queue = vec!["examples/music-1.mp3", "examples/music-2.mp3"];
 
     let mut resampled = ResampledDecoder::new(
         output_config.sample_rate().0 as usize,

@@ -1,8 +1,8 @@
-use cpal::{SampleFormat, SampleRate};
 use crossterm::style::Stylize;
 use dcal::{
-    decoder::{Decoder, DecoderError, DecoderResult, ReadSeekSource, ResampledDecoder},
-    output::{AudioOutput, OutputBuilder, RequestedOutputConfig},
+    decoder::{DecoderError, DecoderResult, ReadSeekSource},
+    output::OutputBuilder,
+    AudioManager,
 };
 use reedline::{
     default_emacs_keybindings, Color, ColumnarMenu, DefaultCompleter, DefaultPrompt, Emacs,
@@ -10,8 +10,7 @@ use reedline::{
 };
 use std::{
     error::Error,
-    fs::File,
-    io::{self, BufReader},
+    io,
     path::Path,
     sync::mpsc::{self, TryRecvError},
     time::Duration,
@@ -147,20 +146,13 @@ fn event_loop(
     queue_rx: mpsc::Receiver<String>,
     command_rx: mpsc::Receiver<Command>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
-    let mut output_config = output_builder.default_output_config()?;
+    let mut manager = AudioManager::<f32>::new(output_builder);
 
-    let mut output: AudioOutput<f32> =
-        output_builder.new_output::<f32>(None, output_config.clone())?;
-
-    let mut resampled = ResampledDecoder::<f32>::new(
-        output_config.sample_rate().0 as usize,
-        output_config.channels() as usize,
-    );
-    let mut current_file: String;
     let mut reset: bool;
     let mut paused = false;
     let mut current_position = Duration::default();
     let mut seek_position: Option<Duration> = None;
+    let mut current_file: String;
 
     loop {
         match queue_rx.try_recv() {
@@ -170,31 +162,16 @@ fn event_loop(
             }
             Err(TryRecvError::Empty) => {
                 reset = true;
-                output.write_blocking(resampled.flush());
-                std::thread::sleep(output.buffer_duration());
-                output.stop();
-
+                manager.flush();
                 current_file = queue_rx.recv()?;
             }
             Err(TryRecvError::Disconnected) => {
                 return Ok(());
             }
         };
-
         loop {
-            let file = File::open(&current_file)?;
-            let file_len = file.metadata()?.len();
-
-            let extension = Path::new(&current_file)
-                .extension()
-                .unwrap()
-                .to_string_lossy()
-                .to_string();
-            let reader = BufReader::new(file);
-            let source = Box::new(ReadSeekSource::new(reader, Some(file_len), Some(extension)));
-
-            let mut decoder =
-                Decoder::<f32>::new(source, 1.0, output_config.channels() as usize, None)?;
+            let source = Box::new(ReadSeekSource::from_path(Path::new(&current_file)));
+            let mut decoder = manager.init_decoder(source);
             if let Some(seek_position) = seek_position.take() {
                 decoder.seek(seek_position).unwrap();
             }
@@ -204,39 +181,9 @@ fn event_loop(
 
             if reset {
                 reset = false;
-
-                output_config = output_builder.find_closest_config(
-                    None,
-                    RequestedOutputConfig {
-                        sample_rate: Some(SampleRate(decoder.sample_rate() as u32)),
-                        channels: Some(output_config.channels()),
-                        sample_format: Some(SampleFormat::F32),
-                    },
-                )?;
-
-                output = output_builder.new_output(None, output_config.clone())?;
-
-                resampled = ResampledDecoder::new(
-                    output_config.sample_rate().0 as usize,
-                    output_config.channels() as usize,
-                );
-
-                resampled.initialize(&mut decoder);
-
-                // Pre-fill output buffer before starting the stream
-                while resampled.current(&decoder).len() <= output.buffer_space_available() {
-                    output.write(resampled.current(&decoder)).unwrap();
-                    if resampled.decode_next_frame(&mut decoder)? == DecoderResult::Finished {
-                        break;
-                    }
-                }
-
-                output.start()?;
+                manager.reset(&mut decoder);
             } else {
-                if decoder.sample_rate() != resampled.in_sample_rate() {
-                    output.write_blocking(resampled.flush());
-                }
-                resampled.initialize(&mut decoder);
+                manager.initialize(&mut decoder);
             }
 
             let go_next = loop {
@@ -266,9 +213,7 @@ fn event_loop(
                         }
                     }
                 }
-
-                output.write_blocking(resampled.current(&decoder));
-                match resampled.decode_next_frame(&mut decoder) {
+                match manager.write(&mut decoder) {
                     Ok(DecoderResult::Finished) => break true,
                     Ok(DecoderResult::Unfinished) => {}
                     Err(DecoderError::ResetRequired) => {
@@ -278,6 +223,7 @@ fn event_loop(
                         return Err(e)?;
                     }
                 }
+
                 current_position = decoder.current_position().position;
             };
 

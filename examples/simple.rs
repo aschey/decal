@@ -1,9 +1,9 @@
-use cpal::{SampleFormat, SampleRate};
 use dcal::{
-    decoder::{Decoder, DecoderResult, ReadSeekSource, ResampledDecoder},
-    output::{OutputBuilder, RequestedOutputConfig},
+    decoder::{DecoderResult, ReadSeekSource},
+    output::OutputBuilder,
+    AudioManager,
 };
-use std::{error::Error, fs::File, io::BufReader, path::Path};
+use std::{error::Error, path::Path};
 use tracing::error;
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -13,57 +13,17 @@ fn main() -> Result<(), Box<dyn Error>> {
         .init();
 
     let output_builder = OutputBuilder::new(|| {}, |err| error!("Output error: {err}"));
-    let default_output_config = output_builder.default_output_config()?;
+    let mut manager = AudioManager::<f32>::new(output_builder);
 
-    let file = File::open("examples/music.mp3")?;
-    let file_len = file.metadata()?.len();
+    let source = Box::new(ReadSeekSource::from_path(Path::new("examples/music.mp3")));
 
-    let extension = Path::new("examples/music.mp3")
-        .extension()
-        .unwrap()
-        .to_string_lossy()
-        .to_string();
-    let reader = BufReader::new(file);
-    let source = Box::new(ReadSeekSource::new(reader, Some(file_len), Some(extension)));
+    let mut decoder = manager.init_decoder(source);
 
-    let mut decoder =
-        Decoder::<f32>::new(source, 1.0, default_output_config.channels() as usize, None)?;
-
-    let output_config = output_builder.find_closest_config(
-        None,
-        RequestedOutputConfig {
-            sample_rate: Some(SampleRate(decoder.sample_rate() as u32)),
-            channels: Some(default_output_config.channels()),
-            sample_format: Some(SampleFormat::F32),
-        },
-    )?;
-
-    let mut resampled = ResampledDecoder::new(
-        output_config.sample_rate().0 as usize,
-        output_config.channels() as usize,
-    );
-
-    resampled.initialize(&mut decoder);
-
-    let mut output = output_builder.new_output(None, output_config)?;
-
-    // Pre-fill output buffer before starting the stream
-    while resampled.current(&decoder).len() <= output.buffer_space_available() {
-        output.write(resampled.current(&decoder)).unwrap();
-        if resampled.decode_next_frame(&mut decoder)? == DecoderResult::Finished {
-            break;
-        }
-    }
-
-    output.start()?;
+    manager.reset(&mut decoder);
 
     loop {
-        output.write_blocking(resampled.current(&decoder));
-        if resampled.decode_next_frame(&mut decoder)? == DecoderResult::Finished {
-            // Write out any remaining data
-            output.write_blocking(resampled.flush());
-            // Wait for all data to reach the audio device
-            std::thread::sleep(output.buffer_duration());
+        if manager.write(&mut decoder)? == DecoderResult::Finished {
+            manager.flush();
             return Ok(());
         }
     }

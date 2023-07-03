@@ -1,4 +1,3 @@
-use self::source::Source;
 use dasp::sample::Sample as DaspSample;
 use std::{
     io,
@@ -20,8 +19,8 @@ use tap::TapFallible;
 use thiserror::Error;
 use tracing::{error, info, warn};
 
-mod audio_manager;
-pub use audio_manager::*;
+mod resampler;
+pub use resampler::*;
 mod channel_buffer;
 mod source;
 pub use source::*;

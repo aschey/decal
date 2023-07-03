@@ -1,5 +1,7 @@
 use std::fmt::Debug;
-use std::io::{Read, Result, Seek, SeekFrom};
+use std::fs::File;
+use std::io::{BufReader, Read, Result, Seek, SeekFrom};
+use std::path::Path;
 use symphonia::core::io::MediaSource;
 
 #[derive(Debug)]
@@ -18,14 +20,23 @@ pub trait Source: MediaSource + FileExt + Debug {
 }
 
 impl<T: Read + Seek + Send> ReadSeekSource<T> {
-    /// Instantiates a new `ReadSeekSource<T>` by taking ownership and wrapping the provided
-    /// `Read + Seek`er.
     pub fn new(inner: T, len: Option<u64>, extension: Option<String>) -> Self {
         ReadSeekSource {
             inner,
             len,
             extension,
         }
+    }
+}
+
+impl ReadSeekSource<BufReader<File>> {
+    pub fn from_path(path: &Path) -> Self {
+        let file = File::open(path).unwrap();
+        let file_len = file.metadata().ok().map(|m| m.len());
+
+        let extension = path.extension().map(|e| e.to_string_lossy().to_string());
+        let reader = BufReader::new(file);
+        Self::new(reader, file_len, extension)
     }
 }
 

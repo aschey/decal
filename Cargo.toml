@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 cpal = "0.15"
-dasp = "0.11.0"
+dasp = "0.11"
 rb = "0.4"
 rubato = "0.12"
 symphonia = { version = "0.5", features = [

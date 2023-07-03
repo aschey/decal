@@ -1,4 +1,4 @@
-use std::{error::Error, fs::File, io::BufReader, path::Path, time::Duration};
+use std::{error::Error, path::Path, time::Duration};
 
 use cpal::{SampleFormat, SampleRate};
 use dcal::{
@@ -40,16 +40,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     for file_name in queue.into_iter() {
         loop {
-            let file = File::open(file_name)?;
-            let file_len = file.metadata()?.len();
-
-            let extension = Path::new(file_name)
-                .extension()
-                .unwrap()
-                .to_string_lossy()
-                .to_string();
-            let reader = BufReader::new(file);
-            let source = Box::new(ReadSeekSource::new(reader, Some(file_len), Some(extension)));
+            let source = Box::new(ReadSeekSource::from_path(Path::new(file_name)));
 
             let mut decoder =
                 Decoder::<f32>::new(source, 1.0, output_config.channels() as usize, None)?;

@@ -8,11 +8,11 @@ pub(crate) struct ChannelBuffer<T> {
 }
 
 impl<T: Sample + Clone> ChannelBuffer<T> {
-    pub(crate) fn new(capacity: usize, channels: usize) -> Self {
+    pub(crate) fn new(inner: Vec<Vec<T>>) -> Self {
         Self {
-            inner: vec![Vec::with_capacity(capacity); channels],
-            capacity,
-            channels,
+            capacity: inner[0].capacity(),
+            channels: inner.len(),
+            inner,
             current_chan: 0,
         }
     }

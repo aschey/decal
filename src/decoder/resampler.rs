@@ -118,14 +118,16 @@ impl<T: Sample + DaspSample + ConvertibleSample + rubato::Sample> ResampledDecod
             self.channels,
         )
         .expect("failed to create resampler");
-        let resampler_buf = resampler.input_buffer_allocate();
+
+        let in_buf = resampler.input_buffer_allocate(true);
+        let resampler_buf = resampler.output_buffer_allocate(true);
         let n_frames = resampler.input_frames_next();
 
         let resampler = ResampledDecoderImpl::Resampled(ResampleDecoderInner {
             written: 0,
             resampler_buf,
             out_buf: Vec::with_capacity(n_frames * self.channels),
-            in_buf: ChannelBuffer::new(n_frames, self.channels),
+            in_buf: ChannelBuffer::new(in_buf),
             resampler,
         });
         self.decoder_inner = resampler;

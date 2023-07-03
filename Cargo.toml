@@ -9,7 +9,7 @@ edition = "2021"
 cpal = "0.15"
 dasp = "0.11"
 rb = "0.4"
-rubato = "0.12"
+rubato = "0.14"
 symphonia = { version = "0.5", features = [
     "aac",
     "flac",
@@ -19,9 +19,9 @@ symphonia = { version = "0.5", features = [
     "ogg",
     "vorbis",
 ] }
-tap = "1.0.1"
-thiserror = "1.0.40"
-tracing = "0.1.37"
+tap = "1"
+thiserror = "1"
+tracing = "0.1"
 
 [dev-dependencies]
 crossterm = "0.26.1"

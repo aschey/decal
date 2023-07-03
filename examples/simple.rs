@@ -1,4 +1,4 @@
-use dcal::{
+use decal::{
     decoder::{DecoderResult, ReadSeekSource},
     output::OutputBuilder,
     AudioManager,

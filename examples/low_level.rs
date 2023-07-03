@@ -1,7 +1,7 @@
 use std::{error::Error, path::Path, time::Duration};
 
 use cpal::{SampleFormat, SampleRate};
-use dcal::{
+use decal::{
     decoder::{Decoder, DecoderError, DecoderResult, ReadSeekSource, ResampledDecoder},
     output::{AudioOutput, OutputBuilder, RequestedOutputConfig},
 };

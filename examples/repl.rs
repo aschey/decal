@@ -1,5 +1,5 @@
 use crossterm::style::Stylize;
-use dcal::{
+use decal::{
     decoder::{DecoderError, DecoderResult, ReadSeekSource},
     output::OutputBuilder,
     AudioManager,

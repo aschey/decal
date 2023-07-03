@@ -111,6 +111,7 @@ impl OutputBuilder {
             });
         }
 
+        #[allow(clippy::let_and_return)]
         builder
     }
 

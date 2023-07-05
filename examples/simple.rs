@@ -1,6 +1,6 @@
 use decal::{
-    decoder::{DecoderResult, ReadSeekSource},
-    output::OutputBuilder,
+    decoder::{DecoderResult, DecoderSettings, ReadSeekSource, ResamplerSettings},
+    output::{CpalOutput, OutputBuilder},
     AudioManager,
 };
 use std::{error::Error, path::Path};
@@ -12,12 +12,16 @@ fn main() -> Result<(), Box<dyn Error>> {
         .with_file(true)
         .init();
 
-    let output_builder = OutputBuilder::new(|| {}, |err| error!("Output error: {err}"));
-    let mut manager = AudioManager::<f32>::new(output_builder);
+    let output_builder = OutputBuilder::new(
+        CpalOutput::default(),
+        || {},
+        |err| error!("Output error: {err}"),
+    );
+    let mut manager = AudioManager::<f32, _>::new(output_builder, ResamplerSettings::default());
 
     let source = Box::new(ReadSeekSource::from_path(Path::new("examples/music.mp3")));
 
-    let mut decoder = manager.init_decoder(source);
+    let mut decoder = manager.init_decoder(source, DecoderSettings::default());
 
     manager.reset(&mut decoder);
 

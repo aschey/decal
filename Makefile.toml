@@ -1,0 +1,13 @@
+[tasks.coverage]
+args = [
+    "llvm-cov",
+    "--workspace",
+    "--all-features",
+    "--html",
+    "--open",
+    "--ignore-filename-regex",
+    "\".cargo|.*_test\\.rs\"",
+]
+clear = true
+command = "cargo"
+install_crate = "cargo-llvm-cov"

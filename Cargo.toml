@@ -6,19 +6,11 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-cpal = "0.15"
-dasp = "0.11"
-rb = "0.4"
-rubato = "0.14"
-symphonia = { version = "0.5", features = [
-    "aac",
-    "flac",
-    "mp3",
-    "isomp4",
-    "wav",
-    "ogg",
-    "vorbis",
-] }
+cpal = { version = "0.15", optional = true }
+dasp = { version = "0.11", optional = true }
+rb = { version = "0.4", optional = true }
+rubato = { version = "0.14", optional = true }
+symphonia = { version = "0.5", optional = true }
 tap = "1"
 thiserror = "1"
 tracing = "0.1"
@@ -27,3 +19,29 @@ tracing = "0.1"
 crossterm = "0.26.1"
 reedline = "0.21.0"
 tracing-subscriber = "0.3.17"
+
+[features]
+output = ["cpal", "rb"]
+decoder = ["symphonia", "dasp", "rubato"]
+decoder-aac = ["decoder", "symphonia/aac"]
+decoder-flac = ["decoder", "symphonia/flac"]
+decoder-mp3 = ["decoder", "symphonia/mp3"]
+decoder-isomp4 = ["decoder", "symphonia/isomp4"]
+decoder-wav = ["decoder", "symphonia/wav"]
+decoder-ogg = ["decoder", "symphonia/ogg"]
+decoder-vorbis = ["decoder", "symphonia/vorbis"]
+decoder-all = [
+    "decoder",
+    "decoder-aac",
+    "decoder-flac",
+    "decoder-mp3",
+    "decoder-isomp4",
+    "decoder-wav",
+    "decoder-ogg",
+    "decoder-vorbis",
+]
+asio = ["cpal/asio"]
+oboe-shared-stdcxx = ["cpal/oboe-shared-stdcxx"]
+jack = ["cpal/jack"]
+mock = []
+default = ["decoder-all", "output", "mock"]

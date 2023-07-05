@@ -2,8 +2,11 @@ use std::{error::Error, path::Path, time::Duration};
 
 use cpal::{SampleFormat, SampleRate};
 use decal::{
-    decoder::{Decoder, DecoderError, DecoderResult, ReadSeekSource, ResampledDecoder},
-    output::{AudioOutput, OutputBuilder, RequestedOutputConfig},
+    decoder::{
+        Decoder, DecoderError, DecoderResult, DecoderSettings, ReadSeekSource, ResampledDecoder,
+        ResamplerSettings,
+    },
+    output::{AudioOutput, CpalOutput, OutputBuilder, RequestedOutputConfig},
 };
 use tap::TapFallible;
 use tracing::error;
@@ -16,6 +19,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let (reset_tx, reset_rx) = std::sync::mpsc::sync_channel(32);
     let output_builder = OutputBuilder::new(
+        CpalOutput::default(),
         move || {
             reset_tx
                 .send(())
@@ -26,13 +30,14 @@ fn main() -> Result<(), Box<dyn Error>> {
     );
     let mut output_config = output_builder.default_output_config()?;
 
-    let mut output: AudioOutput<f32> =
+    let mut output: AudioOutput<f32, _> =
         output_builder.new_output::<f32>(None, output_config.clone())?;
     let queue = vec!["examples/music-1.mp3", "examples/music-2.mp3"];
 
     let mut resampled = ResampledDecoder::new(
         output_config.sample_rate().0 as usize,
         output_config.channels() as usize,
+        ResamplerSettings::default(),
     );
     let mut initialized = false;
     let mut current_position = Duration::default();
@@ -42,8 +47,14 @@ fn main() -> Result<(), Box<dyn Error>> {
         loop {
             let source = Box::new(ReadSeekSource::from_path(Path::new(file_name)));
 
-            let mut decoder =
-                Decoder::<f32>::new(source, 1.0, output_config.channels() as usize, None)?;
+            let mut decoder = Decoder::<f32>::new(
+                source,
+                1.0,
+                output_config.channels() as usize,
+                DecoderSettings {
+                    enable_gapless: true,
+                },
+            )?;
             if let Some(seek_position) = seek_position.take() {
                 decoder.seek(seek_position).unwrap();
             }
@@ -65,6 +76,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 resampled = ResampledDecoder::new(
                     output_config.sample_rate().0 as usize,
                     output_config.channels() as usize,
+                    ResamplerSettings::default(),
                 );
 
                 resampled.initialize(&mut decoder);
@@ -114,6 +126,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Write out any remaining data
     output.write_blocking(resampled.flush());
     // Wait for all data to reach the audio device
-    std::thread::sleep(output.buffer_duration());
+    std::thread::sleep(output.settings().buffer_duration);
     Ok(())
 }

@@ -50,13 +50,12 @@ pub struct CurrentPosition {
     pub retrieval_time: Option<Duration>,
 }
 
-#[derive(PartialEq, Eq)]
-enum InitializeOpt {
-    TrimSilence,
-    PreserveSilence,
-}
-
 const NANOS_PER_SEC: f64 = 1_000_000_000.0;
+
+#[derive(Clone, Debug, Default)]
+pub struct DecoderSettings {
+    pub enable_gapless: bool,
+}
 
 pub struct Decoder<T: Sample + dasp::sample::Sample> {
     buf: Vec<T>,
@@ -73,6 +72,7 @@ pub struct Decoder<T: Sample + dasp::sample::Sample> {
     paused: bool,
     sample_rate: usize,
     seek_required_ts: Option<u64>,
+    settings: DecoderSettings,
 }
 
 impl<T> Decoder<T>
@@ -83,7 +83,7 @@ where
         source: Box<dyn Source>,
         volume: T::Float,
         output_channels: usize,
-        start_position: Option<Duration>,
+        settings: DecoderSettings,
     ) -> Result<Self, DecoderError> {
         let mut hint = Hint::new();
         if let Some(extension) = source.get_file_ext() {
@@ -92,7 +92,7 @@ where
         let mss = MediaSourceStream::new(source.as_media_source(), Default::default());
 
         let format_opts = FormatOptions {
-            enable_gapless: true,
+            enable_gapless: settings.enable_gapless,
             ..FormatOptions::default()
         };
         let metadata_opts = MetadataOptions::default();
@@ -143,18 +143,9 @@ where
             paused: false,
             sample_rate: 0,
             seek_required_ts: None,
+            settings,
         };
-        if let Some(start_position) = start_position {
-            info!("Decoder seeking to {start_position:?}");
-            // Stream may not be seekable
-            decoder
-                .seek(start_position)
-                .tap_err(|e| warn!("Unable to seek to {start_position:?}: {e:?}"))
-                .ok();
-            decoder.initialize(InitializeOpt::PreserveSilence)?;
-        } else {
-            decoder.initialize(InitializeOpt::TrimSilence)?;
-        }
+        decoder.initialize()?;
 
         Ok(decoder)
     }
@@ -233,10 +224,10 @@ where
         )
     }
 
-    fn initialize(&mut self, initialize_opt: InitializeOpt) -> Result<(), DecoderError> {
+    fn initialize(&mut self) -> Result<(), DecoderError> {
         let mut samples_skipped = 0;
         let volume = self.volume;
-        if initialize_opt == InitializeOpt::TrimSilence {
+        if self.settings.enable_gapless {
             // Edge case: if the volume is 0 then this will cause an issue because every sample will come back as silent
             // Need to set the volume to 1 until we find the silence, then we can set it back
             self.volume = T::IDENTITY;
@@ -247,7 +238,7 @@ where
             if self.time_base.denom == 1 {
                 self.time_base = TimeBase::new(1, self.sample_rate as u32);
             }
-            if initialize_opt == InitializeOpt::PreserveSilence {
+            if !self.settings.enable_gapless {
                 break;
             }
             if let Some(mut index) = self.buf.iter().position(|s| *s != T::MID) {

@@ -18,3 +18,5 @@ jobs:
         run: cargo clippy --workspace --all-features -- -D warnings
       - name: Build all
         run: cargo build --workspace --all-features
+      - name: Test
+        run: cargo test

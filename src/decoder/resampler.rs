@@ -72,20 +72,33 @@ enum ResampledDecoderImpl<T: Sample + DaspSample> {
     NotResampled,
 }
 
+#[derive(Clone, Debug)]
+pub struct ResamplerSettings {
+    pub chunk_size: usize,
+}
+
+impl Default for ResamplerSettings {
+    fn default() -> Self {
+        Self { chunk_size: 1024 }
+    }
+}
+
 pub struct ResampledDecoder<T: Sample + DaspSample> {
     decoder_inner: ResampledDecoderImpl<T>,
     in_sample_rate: usize,
     out_sample_rate: usize,
     channels: usize,
+    settings: ResamplerSettings,
 }
 
 impl<T: Sample + DaspSample + ConvertibleSample + rubato::Sample> ResampledDecoder<T> {
-    pub fn new(out_sample_rate: usize, channels: usize) -> Self {
+    pub fn new(out_sample_rate: usize, channels: usize, settings: ResamplerSettings) -> Self {
         Self {
             decoder_inner: ResampledDecoderImpl::NotResampled,
             in_sample_rate: out_sample_rate,
             out_sample_rate,
             channels,
+            settings,
         }
     }
 
@@ -114,7 +127,7 @@ impl<T: Sample + DaspSample + ConvertibleSample + rubato::Sample> ResampledDecod
         let resampler = FftFixedInOut::<T>::new(
             self.in_sample_rate,
             self.out_sample_rate,
-            1024,
+            self.settings.chunk_size,
             self.channels,
         )
         .expect("failed to create resampler");

@@ -1,7 +1,7 @@
 use crossterm::style::Stylize;
 use decal::{
-    decoder::{DecoderError, DecoderResult, ReadSeekSource},
-    output::OutputBuilder,
+    decoder::{DecoderError, DecoderResult, DecoderSettings, ReadSeekSource, ResamplerSettings},
+    output::{CpalOutput, OutputBuilder},
     AudioManager,
 };
 use reedline::{
@@ -91,6 +91,7 @@ fn main() -> io::Result<()> {
     let (command_tx, command_rx) = mpsc::sync_channel(32);
     let command_tx_ = command_tx.clone();
     let output_builder = OutputBuilder::new(
+        CpalOutput::default(),
         move || {
             command_tx_.send(Command::Reset).unwrap();
         },
@@ -142,11 +143,11 @@ fn main() -> io::Result<()> {
 }
 
 fn event_loop(
-    output_builder: OutputBuilder,
+    output_builder: OutputBuilder<CpalOutput>,
     queue_rx: mpsc::Receiver<String>,
     command_rx: mpsc::Receiver<Command>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
-    let mut manager = AudioManager::<f32>::new(output_builder);
+    let mut manager = AudioManager::<f32, _>::new(output_builder, ResamplerSettings::default());
 
     let mut reset: bool;
     let mut paused = false;
@@ -171,7 +172,12 @@ fn event_loop(
         };
         loop {
             let source = Box::new(ReadSeekSource::from_path(Path::new(&current_file)));
-            let mut decoder = manager.init_decoder(source);
+            let mut decoder = manager.init_decoder(
+                source,
+                DecoderSettings {
+                    enable_gapless: true,
+                },
+            );
             if let Some(seek_position) = seek_position.take() {
                 decoder.seek(seek_position).unwrap();
             }

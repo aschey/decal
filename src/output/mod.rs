@@ -1,10 +1,17 @@
+// use cpal::{
+//     default_host,
+//     traits::{DeviceTrait, HostTrait, StreamTrait},
+//     BackendSpecificError, BuildStreamError, ChannelCount, DefaultStreamConfigError, Device,
+//     DevicesError, Host, HostId, HostUnavailable, OutputCallbackInfo, PlayStreamError, SampleFormat,
+//     SampleRate, SizedSample, Stream, StreamConfig, StreamError, SupportedStreamConfig,
+//     SupportedStreamConfigsError,
+// };
+
 use cpal::{
-    default_host,
-    traits::{DeviceTrait, HostTrait, StreamTrait},
-    BackendSpecificError, BuildStreamError, ChannelCount, DefaultStreamConfigError, Device,
-    DevicesError, Host, HostId, HostUnavailable, OutputCallbackInfo, PlayStreamError, SampleFormat,
-    SampleRate, SizedSample, Stream, StreamConfig, StreamError, SupportedStreamConfig,
-    SupportedStreamConfigsError,
+    BackendSpecificError, BuildStreamError, ChannelCount, DefaultStreamConfigError,
+    DeviceNameError, DevicesError, HostId, HostUnavailable, PlayStreamError, SampleFormat,
+    SampleRate, SizedSample, StreamConfig, StreamError, SupportedStreamConfig,
+    SupportedStreamConfigRange, SupportedStreamConfigsError,
 };
 use rb::{RbConsumer, RbInspector, RbProducer, SpscRb, RB};
 use std::{
@@ -13,6 +20,57 @@ use std::{
 };
 use thiserror::Error;
 use tracing::{info, warn};
+
+mod cpal_output;
+pub use cpal_output::*;
+#[cfg(feature = "mock")]
+mod mock_output;
+#[cfg(feature = "mock")]
+pub use mock_output::*;
+
+pub trait StreamTrait {
+    fn play(&self) -> Result<(), PlayStreamError>;
+}
+
+pub trait DeviceTrait {
+    type Stream: StreamTrait;
+    type SupportedOutputConfigs: Iterator<Item = SupportedStreamConfigRange>;
+
+    fn default_output_config(&self) -> Result<SupportedStreamConfig, DefaultStreamConfigError>;
+
+    fn name(&self) -> Result<String, DeviceNameError>;
+
+    fn supported_output_configs(
+        &self,
+    ) -> Result<Self::SupportedOutputConfigs, SupportedStreamConfigsError>;
+
+    fn build_output_stream<T, D, E>(
+        &self,
+        config: &StreamConfig,
+        data_callback: D,
+        error_callback: E,
+    ) -> Result<Self::Stream, BuildStreamError>
+    where
+        T: SizedSample,
+        D: FnMut(&mut [T]) + Send + 'static,
+        E: FnMut(StreamError) + Send + 'static;
+}
+
+pub trait HostTrait {
+    type Device: DeviceTrait;
+    type Devices: Iterator<Item = Self::Device>;
+    fn default_output_device(&self) -> Option<Self::Device>;
+    fn devices(&self) -> Result<Self::Devices, DevicesError>;
+}
+
+pub trait AudioBackend {
+    type Host: HostTrait<Device = Self::Device> + Send + Sync + 'static;
+    type Stream: StreamTrait;
+    type Device: DeviceTrait<Stream = Self::Stream>;
+
+    fn default_host(&self) -> Self::Host;
+    fn host_from_id(&self, id: HostId) -> Result<Self::Host, HostUnavailable>;
+}
 
 #[derive(Debug, Error)]
 pub enum AudioOutputError {
@@ -38,39 +96,64 @@ pub struct RequestedOutputConfig {
     pub sample_format: Option<SampleFormat>,
 }
 
-pub struct OutputBuilder {
-    host: Arc<Host>,
+#[derive(Clone)]
+pub struct OutputSettings {
+    pub buffer_duration: Duration,
+}
+
+impl Default for OutputSettings {
+    fn default() -> Self {
+        Self {
+            buffer_duration: Duration::from_millis(200),
+        }
+    }
+}
+
+pub struct OutputBuilder<B: AudioBackend> {
+    host: Arc<B::Host>,
     on_device_changed: Arc<Box<dyn Fn() + Send + Sync>>,
     on_error: Arc<Box<dyn Fn(BackendSpecificError) + Send + Sync>>,
     current_device: Arc<RwLock<Option<String>>>,
+    settings: OutputSettings,
 }
 
-impl OutputBuilder {
-    pub fn new<F1, F2>(on_device_changed: F1, on_error: F2) -> Self
+impl<B: AudioBackend> OutputBuilder<B> {
+    pub fn new<F1, F2>(backend: B, on_device_changed: F1, on_error: F2) -> Self
     where
+        B: AudioBackend,
         F1: Fn() + Send + Sync + 'static,
         F2: Fn(BackendSpecificError) + Send + Sync + 'static,
     {
-        Self::new_from_host(default_host(), on_device_changed, on_error)
+        Self::new_from_host(backend.default_host(), on_device_changed, on_error)
+    }
+
+    pub fn settings(&self) -> &OutputSettings {
+        &self.settings
+    }
+
+    pub fn set_settings(&mut self, settings: OutputSettings) {
+        self.settings = settings;
     }
 
     pub fn new_from_host_id<F1, F2>(
-        host_id: HostId,
+        backend: B,
+        host_id: cpal::HostId,
         on_device_changed: F1,
         on_error: F2,
     ) -> Result<Self, HostUnavailable>
     where
+        B: AudioBackend,
         F1: Fn() + Send + Sync + 'static,
         F2: Fn(BackendSpecificError) + Send + Sync + 'static,
     {
         Ok(Self::new_from_host(
-            cpal::host_from_id(host_id)?,
+            backend.host_from_id(host_id)?,
             on_device_changed,
             on_error,
         ))
     }
 
-    pub fn new_from_host<F1, F2>(host: Host, on_device_changed: F1, on_error: F2) -> Self
+    pub fn new_from_host<F1, F2>(host: B::Host, on_device_changed: F1, on_error: F2) -> Self
     where
         F1: Fn() + Send + Sync + 'static,
         F2: Fn(BackendSpecificError) + Send + Sync + 'static,
@@ -80,9 +163,10 @@ impl OutputBuilder {
             on_device_changed: Arc::new(Box::new(on_device_changed)),
             on_error: Arc::new(Box::new(on_error)),
             current_device: Default::default(),
+            settings: Default::default(),
         };
 
-        #[cfg(windows)]
+        // #[cfg(windows)]
         {
             let current_device = builder.current_device.clone();
             let host = builder.host.clone();
@@ -127,7 +211,7 @@ impl OutputBuilder {
 
     pub fn find_closest_config(
         &self,
-        device_name: Option<String>,
+        device_name: Option<&str>,
         config: RequestedOutputConfig,
     ) -> Result<SupportedStreamConfig, AudioOutputError> {
         let default_device = self
@@ -180,11 +264,19 @@ impl OutputBuilder {
         Ok(default_config)
     }
 
+    pub fn default_output_device(&self) -> Option<B::Device> {
+        self.host.default_output_device()
+    }
+
+    pub fn devices(&self) -> Result<<B::Host as HostTrait>::Devices, DevicesError> {
+        self.host.devices()
+    }
+
     pub fn new_output<T: SizedSample + Default + Send + 'static>(
         &self,
         device_name: Option<String>,
         config: SupportedStreamConfig,
-    ) -> Result<AudioOutput<T>, AudioOutputError> {
+    ) -> Result<AudioOutput<T, B>, AudioOutputError> {
         *self.current_device.write().expect("lock poisoned") = device_name.clone();
         let default_device = self
             .host
@@ -207,32 +299,34 @@ impl OutputBuilder {
         info!("Using device: {:?}", device.name());
         info!("Device config: {config:?}");
 
-        Ok(AudioOutput::new(
+        Ok(AudioOutput::<T, B>::new(
             device,
             config,
             self.on_device_changed.clone(),
             self.on_error.clone(),
+            self.settings.clone(),
         ))
     }
 }
 
-pub struct AudioOutput<T> {
+pub struct AudioOutput<T, B: AudioBackend> {
     ring_buf_producer: rb::Producer<T>,
     ring_buf: SpscRb<T>,
-    stream: Option<Stream>,
+    stream: Option<B::Stream>,
     on_device_changed: Arc<Box<dyn Fn() + Send + Sync>>,
     on_error: Arc<Box<dyn Fn(BackendSpecificError) + Send + Sync>>,
-    device: Device,
+    device: B::Device,
     config: SupportedStreamConfig,
-    buffer_duration: Duration,
+    settings: OutputSettings,
 }
 
-impl<T: SizedSample + Default + Send + 'static> AudioOutput<T> {
+impl<T: SizedSample + Default + Send + 'static, B: AudioBackend> AudioOutput<T, B> {
     pub(crate) fn new(
-        device: Device,
+        device: B::Device,
         config: SupportedStreamConfig,
         on_device_changed: Arc<Box<dyn Fn() + Send + Sync>>,
         on_error: Arc<Box<dyn Fn(BackendSpecificError) + Send + Sync>>,
+        settings: OutputSettings,
     ) -> Self {
         let buffer_duration = Duration::from_millis(200);
         let buffer_ms: usize = buffer_duration.as_millis().try_into().unwrap();
@@ -248,7 +342,7 @@ impl<T: SizedSample + Default + Send + 'static> AudioOutput<T> {
             config,
             on_device_changed,
             on_error,
-            buffer_duration,
+            settings,
         }
     }
 
@@ -287,12 +381,16 @@ impl<T: SizedSample + Default + Send + 'static> AudioOutput<T> {
         self.ring_buf_producer.write(samples)
     }
 
-    pub fn buffer_duration(&self) -> Duration {
-        self.buffer_duration
+    pub fn settings(&self) -> &OutputSettings {
+        &self.settings
+    }
+
+    pub fn device(&self) -> &B::Device {
+        &self.device
     }
 
     pub fn write_blocking(&self, mut samples: &[T]) {
-        let timeout = self.buffer_duration;
+        let timeout = self.settings.buffer_duration;
         loop {
             match self
                 .ring_buf_producer
@@ -315,7 +413,7 @@ impl<T: SizedSample + Default + Send + 'static> AudioOutput<T> {
     fn create_stream(
         &self,
         ring_buf_consumer: rb::Consumer<T>,
-    ) -> Result<Stream, AudioOutputError> {
+    ) -> Result<B::Stream, AudioOutputError> {
         let channels = self.config.channels();
         let config = StreamConfig {
             channels: self.config.channels(),
@@ -332,7 +430,7 @@ impl<T: SizedSample + Default + Send + 'static> AudioOutput<T> {
             .device
             .build_output_stream(
                 &config,
-                move |data: &mut [T], _: &OutputCallbackInfo| {
+                move |data: &mut [T]| {
                     // Write out as many samples as possible from the ring buffer to the audio output.
                     let written = ring_buf_consumer.read(data).unwrap_or(0);
                     // Mute any remaining samples.
@@ -350,7 +448,6 @@ impl<T: SizedSample + Default + Send + 'static> AudioOutput<T> {
                         on_error(err);
                     }
                 },
-                None,
             )
             .map_err(AudioOutputError::OpenStreamError)?;
 
@@ -360,3 +457,11 @@ impl<T: SizedSample + Default + Send + 'static> AudioOutput<T> {
         Ok(stream)
     }
 }
+
+#[cfg(test)]
+#[path = "./output_config_test.rs"]
+mod output_config_test;
+
+#[cfg(test)]
+#[path = "./write_output_test.rs"]
+mod write_output_test;

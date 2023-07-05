@@ -166,7 +166,7 @@ impl<B: AudioBackend> OutputBuilder<B> {
             settings: Default::default(),
         };
 
-        // #[cfg(windows)]
+        #[cfg(any(windows, test))]
         {
             let current_device = builder.current_device.clone();
             let host = builder.host.clone();

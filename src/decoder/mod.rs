@@ -8,13 +8,14 @@ use symphonia::core::{
     codecs::{Decoder as SymphoniaDecoder, DecoderOptions},
     conv::ConvertibleSample,
     errors::Error,
-    formats::{FormatOptions, FormatReader, Packet, SeekMode, SeekTo, SeekedTo},
+    formats::{FormatOptions, FormatReader, Packet, SeekMode, SeekedTo},
     io::MediaSourceStream,
     meta::MetadataOptions,
     probe::Hint,
     sample::Sample,
     units::{Time, TimeBase},
 };
+pub use symphonia::core::{formats::SeekTo, units::TimeStamp};
 use tap::TapFallible;
 use thiserror::Error;
 use tracing::{error, info, warn};
@@ -43,6 +44,10 @@ pub enum DecoderError {
     #[error("The decoder needs to be reset before continuing")]
     ResetRequired,
 }
+
+#[derive(Error, Debug)]
+#[error("Error seeking: {0}")]
+pub struct SeekError(symphonia::core::errors::Error);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CurrentPosition {
@@ -170,7 +175,7 @@ where
         self.sample_rate
     }
 
-    pub fn seek(&mut self, time: Duration) -> Result<SeekedTo, symphonia::core::errors::Error> {
+    pub fn seek(&mut self, time: Duration) -> Result<SeekedTo, SeekError> {
         let position = self.current_position();
         let seek_result = match self.reader_seek(time) {
             Ok(result) => {
@@ -197,7 +202,7 @@ where
 
         // Per the docs, decoders need to be reset after seeking
         self.decoder.reset();
-        seek_result
+        seek_result.map_err(SeekError)
     }
 
     pub fn current_position(&self) -> CurrentPosition {

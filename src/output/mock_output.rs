@@ -179,7 +179,7 @@ impl HostTrait for MockHost {
         Some(self.default_device.clone())
     }
 
-    fn devices(&self) -> Result<Self::Devices, cpal::DevicesError> {
+    fn output_devices(&self) -> Result<Self::Devices, cpal::DevicesError> {
         Ok(MockDevices {
             index: 0,
             devices: [
@@ -191,6 +191,7 @@ impl HostTrait for MockHost {
     }
 }
 
+#[derive(Clone)]
 pub struct MockOutput {
     pub default_host: MockHost,
 }

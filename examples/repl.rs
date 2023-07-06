@@ -1,7 +1,7 @@
 use crossterm::style::Stylize;
 use decal::{
     decoder::{DecoderError, DecoderResult, DecoderSettings, ReadSeekSource, ResamplerSettings},
-    output::{CpalOutput, OutputBuilder},
+    output::{AudioBackend, CpalOutput, OutputBuilder},
     AudioManager,
 };
 use reedline::{
@@ -142,8 +142,8 @@ fn main() -> io::Result<()> {
     }
 }
 
-fn event_loop(
-    output_builder: OutputBuilder<CpalOutput>,
+fn event_loop<B: AudioBackend>(
+    output_builder: OutputBuilder<B>,
     queue_rx: mpsc::Receiver<String>,
     command_rx: mpsc::Receiver<Command>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {

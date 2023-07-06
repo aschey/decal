@@ -1,14 +1,14 @@
 use super::{AudioBackend, DeviceTrait, HostTrait, StreamTrait};
 use cpal::traits::{DeviceTrait as _, HostTrait as _, StreamTrait as _};
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct CpalOutput {}
 
 pub struct CpalHost(cpal::Host);
 
 pub struct CpalDevice(cpal::Device);
 
-pub struct CpalDevices(cpal::Devices);
+pub struct CpalDevices(cpal::OutputDevices<<cpal::Host as cpal::traits::HostTrait>::Devices>);
 
 impl Iterator for CpalDevices {
     type Item = CpalDevice;
@@ -78,8 +78,8 @@ impl HostTrait for CpalHost {
         self.0.default_output_device().map(CpalDevice)
     }
 
-    fn devices(&self) -> Result<Self::Devices, cpal::DevicesError> {
-        self.0.devices().map(CpalDevices)
+    fn output_devices(&self) -> Result<Self::Devices, cpal::DevicesError> {
+        self.0.output_devices().map(CpalDevices)
     }
 }
 

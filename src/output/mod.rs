@@ -60,10 +60,10 @@ pub trait HostTrait {
     type Device: DeviceTrait;
     type Devices: Iterator<Item = Self::Device>;
     fn default_output_device(&self) -> Option<Self::Device>;
-    fn devices(&self) -> Result<Self::Devices, DevicesError>;
+    fn output_devices(&self) -> Result<Self::Devices, DevicesError>;
 }
 
-pub trait AudioBackend {
+pub trait AudioBackend: Clone {
     type Host: HostTrait<Device = Self::Device> + Send + Sync + 'static;
     type Stream: StreamTrait;
     type Device: DeviceTrait<Stream = Self::Stream>;
@@ -221,7 +221,7 @@ impl<B: AudioBackend> OutputBuilder<B> {
         let device = match &device_name {
             Some(device_name) => self
                 .host
-                .devices()
+                .output_devices()
                 .map_err(AudioOutputError::LoadDevicesError)?
                 .find(|d| {
                     d.name()
@@ -268,8 +268,8 @@ impl<B: AudioBackend> OutputBuilder<B> {
         self.host.default_output_device()
     }
 
-    pub fn devices(&self) -> Result<<B::Host as HostTrait>::Devices, DevicesError> {
-        self.host.devices()
+    pub fn output_devices(&self) -> Result<<B::Host as HostTrait>::Devices, DevicesError> {
+        self.host.output_devices()
     }
 
     pub fn new_output<T: SizedSample + Default + Send + 'static>(
@@ -286,7 +286,7 @@ impl<B: AudioBackend> OutputBuilder<B> {
         let device = match &device_name {
             Some(device_name) => self
                 .host
-                .devices()
+                .output_devices()
                 .map_err(AudioOutputError::LoadDevicesError)?
                 .find(|d| {
                     d.name()

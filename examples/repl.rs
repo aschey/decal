@@ -23,6 +23,7 @@ enum Command {
     Next,
     Stop,
     Seek(Duration),
+    Volume(f32),
     Reset,
 }
 
@@ -56,6 +57,11 @@ fn main() -> io::Result<()> {
         "Seek to a specific point in the song"
             .with(Color::DarkGrey)
             .dim()
+    );
+    println!(
+        "volume {} {}",
+        "<percentage>".cyan(),
+        "Set the volume (0-100)".with(Color::DarkGrey).dim()
     );
     println!(
         "next             {}",
@@ -109,7 +115,7 @@ fn main() -> io::Result<()> {
                     (_, Some(("add", val))) => {
                         queue_tx.send(val.to_owned()).unwrap();
                     }
-                    (val @ "add" | val @ "seek", None) => {
+                    (val @ "add" | val @ "seek" | val @ "volume", None) => {
                         println!("Command '{val}' requires one argument");
                     }
                     ("play", None) => {
@@ -122,6 +128,15 @@ fn main() -> io::Result<()> {
                         command_tx
                             .send(Command::Seek(Duration::from_secs(val.parse().unwrap())))
                             .unwrap();
+                    }
+                    (_, Some(("volume", val))) => {
+                        if let Ok(volume) = val.parse::<f32>() {
+                            if (0.0..=100.0).contains(&volume) {
+                                command_tx.send(Command::Volume(volume / 100.0)).unwrap();
+                                continue;
+                            }
+                        }
+                        println!("Invalid volume: {val}");
                     }
                     ("next", None) => {
                         command_tx.send(Command::Next).unwrap();
@@ -205,6 +220,10 @@ fn event_loop<B: AudioBackend>(
                         }
                         Command::Next => {
                             break true;
+                        }
+                        Command::Volume(volume) => {
+                            manager.set_volume(volume);
+                            decoder.set_volume(volume);
                         }
                         Command::Stop => {
                             return Ok(());

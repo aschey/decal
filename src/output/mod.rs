@@ -352,6 +352,7 @@ impl<T: SizedSample + Default + Send + 'static, B: AudioBackend> AudioOutput<T, 
         }
 
         let stream = self.create_stream(self.ring_buf.consumer())?;
+        stream.play().unwrap();
         self.stream = Some(stream);
 
         Ok(())

@@ -14,6 +14,7 @@ pub struct AudioManager<T: Sample + DaspSample, B: AudioBackend> {
     resampled: ResampledDecoder<T>,
     device_name: Option<String>,
     resampler_settings: ResamplerSettings,
+    volume: T::Float,
 }
 
 impl<
@@ -41,6 +42,7 @@ impl<
             resampled,
             device_name: None,
             resampler_settings,
+            volume: 1.0.to_sample(),
         }
     }
 
@@ -56,6 +58,10 @@ impl<
         self.device_name = device;
     }
 
+    pub fn set_volume(&mut self, volume: T::Float) {
+        self.volume = volume;
+    }
+
     pub fn init_decoder(
         &self,
         source: Box<dyn Source>,
@@ -63,7 +69,7 @@ impl<
     ) -> Decoder<T> {
         Decoder::<T>::new(
             source,
-            1.0.to_sample(),
+            self.volume,
             self.output_config.channels() as usize,
             decoder_settings,
         )

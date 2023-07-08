@@ -22,6 +22,7 @@ fn find_closest_config_default() {
                 additional_devices: vec![],
             },
         },
+        Default::default(),
         move || {},
         |_| {},
     );
@@ -65,6 +66,7 @@ fn find_closest_config_sample_rate() {
                 additional_devices: vec![],
             },
         },
+        Default::default(),
         move || {},
         |_| {},
     );
@@ -119,6 +121,7 @@ fn find_closest_config_channel_mismatch() {
                 )],
             },
         },
+        Default::default(),
         move || {},
         |_| {},
     );
@@ -173,6 +176,7 @@ fn find_closest_config_sample_rate_mismatch() {
                 )],
             },
         },
+        Default::default(),
         move || {},
         |_| {},
     );
@@ -227,6 +231,7 @@ fn find_closest_config_non_default_device() {
                 )],
             },
         },
+        Default::default(),
         move || {},
         |_| {},
     );

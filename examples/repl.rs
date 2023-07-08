@@ -1,8 +1,8 @@
 use crossterm::style::Stylize;
 use decal::{
     decoder::{DecoderError, DecoderResult, DecoderSettings, ReadSeekSource, ResamplerSettings},
-    output::{AudioBackend, CpalOutput, OutputBuilder},
-    AudioManager,
+    output::{AudioBackend, CpalOutput, OutputBuilder, OutputSettings},
+    AudioManager, WriteOutputError,
 };
 use reedline::{
     default_emacs_keybindings, Color, ColumnarMenu, DefaultCompleter, DefaultPrompt, Emacs,
@@ -98,6 +98,7 @@ fn main() -> io::Result<()> {
     let command_tx_ = command_tx.clone();
     let output_builder = OutputBuilder::new(
         CpalOutput::default(),
+        OutputSettings::default(),
         move || {
             command_tx_.send(Command::Reset).unwrap();
         },
@@ -178,7 +179,7 @@ fn event_loop<B: AudioBackend>(
             }
             Err(TryRecvError::Empty) => {
                 reset = true;
-                manager.flush();
+                manager.flush().ok();
                 current_file = queue_rx.recv()?;
             }
             Err(TryRecvError::Disconnected) => {
@@ -202,9 +203,9 @@ fn event_loop<B: AudioBackend>(
 
             if reset {
                 reset = false;
-                manager.reset(&mut decoder);
+                manager.reset(&mut decoder).ok();
             } else {
-                manager.initialize(&mut decoder);
+                manager.initialize(&mut decoder).ok();
             }
 
             let go_next = loop {
@@ -239,9 +240,17 @@ fn event_loop<B: AudioBackend>(
                     }
                 }
                 match manager.write(&mut decoder) {
-                    Ok(DecoderResult::Finished) => break true,
-                    Ok(DecoderResult::Unfinished) => {}
-                    Err(DecoderError::ResetRequired) => {
+                    Ok(DecoderResult::Finished)
+                    | Err(WriteOutputError::WriteBlockingError {
+                        decoder_result: DecoderResult::Finished,
+                        error: _,
+                    }) => break true,
+                    Ok(DecoderResult::Unfinished)
+                    | Err(WriteOutputError::WriteBlockingError {
+                        decoder_result: DecoderResult::Unfinished,
+                        error: _,
+                    }) => {}
+                    Err(WriteOutputError::DecoderError(DecoderError::ResetRequired)) => {
                         break false;
                     }
                     Err(e) => {

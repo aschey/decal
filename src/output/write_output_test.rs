@@ -22,6 +22,7 @@ fn test_write_output() {
                 additional_devices: vec![],
             },
         },
+        Default::default(),
         move || {},
         |_| {},
     );
@@ -29,6 +30,7 @@ fn test_write_output() {
     let mut output = output_builder
         .new_output::<f32>(None, output_builder.default_output_config().unwrap())
         .unwrap();
+
     output.start().unwrap();
     output.write_blocking(&[1.0; 1024]);
     let written = output.device().trigger_callback();

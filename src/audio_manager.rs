@@ -2,10 +2,23 @@ use crate::decoder::{
     Decoder, DecoderError, DecoderResult, DecoderSettings, ResampledDecoder, ResamplerSettings,
     Source,
 };
-use crate::output::{AudioBackend, AudioOutput, OutputBuilder, RequestedOutputConfig};
+use crate::output::{
+    AudioBackend, AudioOutput, OutputBuilder, RequestedOutputConfig, WriteBlockingError,
+};
 use cpal::{SampleRate, SizedSample, SupportedStreamConfig};
 use dasp::sample::Sample as DaspSample;
 use symphonia::core::{conv::ConvertibleSample, sample::Sample};
+
+#[derive(thiserror::Error, Debug)]
+pub enum WriteOutputError {
+    #[error(transparent)]
+    DecoderError(DecoderError),
+    #[error("{error:?}")]
+    WriteBlockingError {
+        decoder_result: DecoderResult,
+        error: WriteBlockingError,
+    },
+}
 
 pub struct AudioManager<T: Sample + DaspSample, B: AudioBackend> {
     output_builder: OutputBuilder<B>,
@@ -76,15 +89,18 @@ impl<
         .unwrap()
     }
 
-    pub fn initialize(&mut self, decoder: &mut Decoder<T>) {
-        if decoder.sample_rate() != self.resampled.in_sample_rate() {
-            self.flush_output();
-        }
+    pub fn initialize(&mut self, decoder: &mut Decoder<T>) -> Result<(), WriteBlockingError> {
+        let res = if decoder.sample_rate() != self.resampled.in_sample_rate() {
+            self.flush_output()
+        } else {
+            Ok(())
+        };
         self.resampled.initialize(decoder);
+        res
     }
 
-    pub fn reset(&mut self, decoder: &mut Decoder<T>) {
-        self.flush();
+    pub fn reset(&mut self, decoder: &mut Decoder<T>) -> Result<(), WriteBlockingError> {
+        let res = self.flush();
         self.output_config = self
             .output_builder
             .find_closest_config(
@@ -119,20 +135,30 @@ impl<
         }
 
         self.output.start().unwrap();
+        res
     }
 
-    pub fn flush(&mut self) {
-        self.flush_output();
+    pub fn flush(&mut self) -> Result<(), WriteBlockingError> {
+        let res = self.flush_output();
         std::thread::sleep(self.output.settings().buffer_duration);
         self.output.stop();
+        res
     }
 
-    pub fn write(&mut self, decoder: &mut Decoder<T>) -> Result<DecoderResult, DecoderError> {
-        self.output.write_blocking(self.resampled.current(decoder));
-        self.resampled.decode_next_frame(decoder)
+    pub fn write(&mut self, decoder: &mut Decoder<T>) -> Result<DecoderResult, WriteOutputError> {
+        let write_result = self.output.write_blocking(self.resampled.current(decoder));
+        let decoder_result = self
+            .resampled
+            .decode_next_frame(decoder)
+            .map_err(WriteOutputError::DecoderError)?;
+        write_result.map_err(|error| WriteOutputError::WriteBlockingError {
+            error,
+            decoder_result,
+        })?;
+        Ok(decoder_result)
     }
 
-    fn flush_output(&mut self) {
-        self.output.write_blocking(self.resampled.flush());
+    fn flush_output(&mut self) -> Result<(), WriteBlockingError> {
+        self.output.write_blocking(self.resampled.flush())
     }
 }

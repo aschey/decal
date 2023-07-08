@@ -109,6 +109,12 @@ impl Default for OutputSettings {
     }
 }
 
+#[derive(thiserror::Error, Debug)]
+pub enum WriteBlockingError {
+    #[error("Output stalled")]
+    OutputStalled,
+}
+
 pub struct OutputBuilder<B: AudioBackend> {
     host: Arc<B::Host>,
     on_device_changed: Arc<Box<dyn Fn() + Send + Sync>>,
@@ -118,13 +124,23 @@ pub struct OutputBuilder<B: AudioBackend> {
 }
 
 impl<B: AudioBackend> OutputBuilder<B> {
-    pub fn new<F1, F2>(backend: B, on_device_changed: F1, on_error: F2) -> Self
+    pub fn new<F1, F2>(
+        backend: B,
+        settings: OutputSettings,
+        on_device_changed: F1,
+        on_error: F2,
+    ) -> Self
     where
         B: AudioBackend,
         F1: Fn() + Send + Sync + 'static,
         F2: Fn(BackendSpecificError) + Send + Sync + 'static,
     {
-        Self::new_from_host(backend.default_host(), on_device_changed, on_error)
+        Self::new_from_host(
+            backend.default_host(),
+            settings,
+            on_device_changed,
+            on_error,
+        )
     }
 
     pub fn settings(&self) -> &OutputSettings {
@@ -138,6 +154,7 @@ impl<B: AudioBackend> OutputBuilder<B> {
     pub fn new_from_host_id<F1, F2>(
         backend: B,
         host_id: cpal::HostId,
+        settings: OutputSettings,
         on_device_changed: F1,
         on_error: F2,
     ) -> Result<Self, HostUnavailable>
@@ -148,12 +165,18 @@ impl<B: AudioBackend> OutputBuilder<B> {
     {
         Ok(Self::new_from_host(
             backend.host_from_id(host_id)?,
+            settings,
             on_device_changed,
             on_error,
         ))
     }
 
-    pub fn new_from_host<F1, F2>(host: B::Host, on_device_changed: F1, on_error: F2) -> Self
+    pub fn new_from_host<F1, F2>(
+        host: B::Host,
+        settings: OutputSettings,
+        on_device_changed: F1,
+        on_error: F2,
+    ) -> Self
     where
         F1: Fn() + Send + Sync + 'static,
         F2: Fn(BackendSpecificError) + Send + Sync + 'static,
@@ -163,7 +186,7 @@ impl<B: AudioBackend> OutputBuilder<B> {
             on_device_changed: Arc::new(Box::new(on_device_changed)),
             on_error: Arc::new(Box::new(on_error)),
             current_device: Default::default(),
-            settings: Default::default(),
+            settings,
         };
 
         #[cfg(any(windows, test))]
@@ -390,7 +413,7 @@ impl<T: SizedSample + Default + Send + 'static, B: AudioBackend> AudioOutput<T, 
         &self.device
     }
 
-    pub fn write_blocking(&self, mut samples: &[T]) {
+    pub fn write_blocking(&self, mut samples: &[T]) -> Result<(), WriteBlockingError> {
         let timeout = self.settings.buffer_duration;
         loop {
             match self
@@ -404,11 +427,12 @@ impl<T: SizedSample + Default + Send + 'static, B: AudioBackend> AudioOutput<T, 
                     break;
                 }
                 Err(_) => {
-                    info!("Consumer stalled. Terminating.");
-                    return;
+                    warn!("Audio stream stalled. Cancelling write.");
+                    return Err(WriteBlockingError::OutputStalled);
                 }
             }
         }
+        Ok(())
     }
 
     fn create_stream(

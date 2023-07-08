@@ -6,7 +6,7 @@ use decal::{
         Decoder, DecoderError, DecoderResult, DecoderSettings, ReadSeekSource, ResampledDecoder,
         ResamplerSettings,
     },
-    output::{AudioOutput, CpalOutput, OutputBuilder, RequestedOutputConfig},
+    output::{AudioOutput, CpalOutput, OutputBuilder, OutputSettings, RequestedOutputConfig},
 };
 use tap::TapFallible;
 use tracing::error;
@@ -20,6 +20,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let (reset_tx, reset_rx) = std::sync::mpsc::sync_channel(32);
     let output_builder = OutputBuilder::new(
         CpalOutput::default(),
+        OutputSettings::default(),
         move || {
             reset_tx
                 .send(())
@@ -92,7 +93,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 output.start()?;
             } else {
                 if decoder.sample_rate() != resampled.in_sample_rate() {
-                    output.write_blocking(resampled.flush());
+                    output.write_blocking(resampled.flush()).ok();
                 }
                 resampled.initialize(&mut decoder);
             }
@@ -104,7 +105,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                     break false;
                 }
 
-                output.write_blocking(resampled.current(&decoder));
+                output.write_blocking(resampled.current(&decoder)).ok();
                 match resampled.decode_next_frame(&mut decoder) {
                     Ok(DecoderResult::Finished) => break true,
                     Ok(DecoderResult::Unfinished) => {}
@@ -124,7 +125,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
     }
     // Write out any remaining data
-    output.write_blocking(resampled.flush());
+    output.write_blocking(resampled.flush()).ok();
     // Wait for all data to reach the audio device
     std::thread::sleep(output.settings().buffer_duration);
     Ok(())

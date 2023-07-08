@@ -1,6 +1,6 @@
 use decal::{
     decoder::{DecoderResult, DecoderSettings, ReadSeekSource, ResamplerSettings},
-    output::{CpalOutput, OutputBuilder},
+    output::{CpalOutput, OutputBuilder, OutputSettings},
     AudioManager,
 };
 use std::{error::Error, path::Path};
@@ -14,6 +14,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let output_builder = OutputBuilder::new(
         CpalOutput::default(),
+        OutputSettings::default(),
         || {},
         |err| error!("Output error: {err}"),
     );
@@ -23,11 +24,11 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let mut decoder = manager.init_decoder(source, DecoderSettings::default());
 
-    manager.reset(&mut decoder);
+    manager.reset(&mut decoder)?;
 
     loop {
         if manager.write(&mut decoder)? == DecoderResult::Finished {
-            manager.flush();
+            manager.flush()?;
             return Ok(());
         }
     }

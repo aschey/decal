@@ -1,11 +1,5 @@
-// use cpal::{
-//     default_host,
-//     traits::{DeviceTrait, HostTrait, StreamTrait},
-//     BackendSpecificError, BuildStreamError, ChannelCount, DefaultStreamConfigError, Device,
-//     DevicesError, Host, HostId, HostUnavailable, OutputCallbackInfo, PlayStreamError, SampleFormat,
-//     SampleRate, SizedSample, Stream, StreamConfig, StreamError, SupportedStreamConfig,
-//     SupportedStreamConfigsError,
-// };
+use std::sync::{Arc, RwLock};
+use std::time::Duration;
 
 use cpal::{
     BackendSpecificError, BuildStreamError, ChannelCount, DefaultStreamConfigError,
@@ -14,10 +8,6 @@ use cpal::{
     SupportedStreamConfigRange, SupportedStreamConfigsError,
 };
 use rb::{RbConsumer, RbInspector, RbProducer, SpscRb, RB};
-use std::{
-    sync::{Arc, RwLock},
-    time::Duration,
-};
 use thiserror::Error;
 use tracing::{info, warn};
 
@@ -456,7 +446,8 @@ impl<T: SizedSample + Default + Send + 'static, B: AudioBackend> AudioOutput<T, 
             .build_output_stream(
                 &config,
                 move |data: &mut [T]| {
-                    // Write out as many samples as possible from the ring buffer to the audio output.
+                    // Write out as many samples as possible from the ring buffer to the audio
+                    // output.
                     let written = ring_buf_consumer.read(data).unwrap_or(0);
                     // Mute any remaining samples.
                     if data.len() > written {

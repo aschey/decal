@@ -1,12 +1,14 @@
-use std::{error::Error, path::Path, time::Duration};
+use std::error::Error;
+use std::path::Path;
+use std::time::Duration;
 
 use cpal::{SampleFormat, SampleRate};
-use decal::{
-    decoder::{
-        Decoder, DecoderError, DecoderResult, DecoderSettings, ReadSeekSource, ResampledDecoder,
-        ResamplerSettings,
-    },
-    output::{AudioOutput, CpalOutput, OutputBuilder, OutputSettings, RequestedOutputConfig},
+use decal::decoder::{
+    Decoder, DecoderError, DecoderResult, DecoderSettings, ReadSeekSource, ResampledDecoder,
+    ResamplerSettings,
+};
+use decal::output::{
+    AudioOutput, CpalOutput, OutputBuilder, OutputSettings, RequestedOutputConfig,
 };
 use tap::TapFallible;
 use tracing::error;

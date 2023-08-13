@@ -1,6 +1,8 @@
-use super::{MockDevice, MockHost, MockOutput, OutputBuilder};
-use cpal::{SampleFormat, SampleRate, SupportedBufferSize, SupportedStreamConfig};
 use std::vec;
+
+use cpal::{SampleFormat, SampleRate, SupportedBufferSize, SupportedStreamConfig};
+
+use super::{MockDevice, MockHost, MockOutput, OutputBuilder};
 
 #[test]
 fn test_write_output() {
@@ -32,7 +34,7 @@ fn test_write_output() {
         .unwrap();
 
     output.start().unwrap();
-    output.write_blocking(&[1.0; 1024]);
+    output.write_blocking(&[1.0; 1024]).unwrap();
     let written = output.device().trigger_callback();
     assert_eq!([1.0; 1024], written);
 }

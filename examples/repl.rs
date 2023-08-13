@@ -1,19 +1,18 @@
+use std::error::Error;
+use std::io;
+use std::path::Path;
+use std::sync::mpsc::{self, TryRecvError};
+use std::time::Duration;
+
 use crossterm::style::Stylize;
-use decal::{
-    decoder::{DecoderError, DecoderResult, DecoderSettings, ReadSeekSource, ResamplerSettings},
-    output::{AudioBackend, CpalOutput, OutputBuilder, OutputSettings},
-    AudioManager, WriteOutputError,
+use decal::decoder::{
+    DecoderError, DecoderResult, DecoderSettings, ReadSeekSource, ResamplerSettings,
 };
+use decal::output::{AudioBackend, CpalOutput, OutputBuilder, OutputSettings};
+use decal::{AudioManager, WriteOutputError};
 use reedline::{
     default_emacs_keybindings, Color, ColumnarMenu, DefaultCompleter, DefaultPrompt, Emacs,
     KeyCode, KeyModifiers, Reedline, ReedlineEvent, ReedlineMenu, Signal,
-};
-use std::{
-    error::Error,
-    io,
-    path::Path,
-    sync::mpsc::{self, TryRecvError},
-    time::Duration,
 };
 use tracing::error;
 

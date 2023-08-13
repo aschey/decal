@@ -1,21 +1,19 @@
+use std::io;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
 use dasp::sample::Sample as DaspSample;
-use std::{
-    io,
-    time::{Duration, SystemTime, UNIX_EPOCH},
-};
-use symphonia::core::{
-    audio::{Channels, SampleBuffer, SignalSpec},
-    codecs::{Decoder as SymphoniaDecoder, DecoderOptions},
-    conv::ConvertibleSample,
-    errors::Error,
-    formats::{FormatOptions, FormatReader, Packet, SeekMode, SeekedTo},
-    io::MediaSourceStream,
-    meta::MetadataOptions,
-    probe::Hint,
-    sample::Sample,
-    units::{Time, TimeBase},
-};
-pub use symphonia::core::{formats::SeekTo, units::TimeStamp};
+use symphonia::core::audio::{Channels, SampleBuffer, SignalSpec};
+use symphonia::core::codecs::{Decoder as SymphoniaDecoder, DecoderOptions};
+use symphonia::core::conv::ConvertibleSample;
+use symphonia::core::errors::Error;
+pub use symphonia::core::formats::SeekTo;
+use symphonia::core::formats::{FormatOptions, FormatReader, Packet, SeekMode, SeekedTo};
+use symphonia::core::io::MediaSourceStream;
+use symphonia::core::meta::MetadataOptions;
+use symphonia::core::probe::Hint;
+use symphonia::core::sample::Sample;
+pub use symphonia::core::units::TimeStamp;
+use symphonia::core::units::{Time, TimeBase};
 use tap::TapFallible;
 use thiserror::Error;
 use tracing::{error, info, warn};
@@ -189,7 +187,8 @@ where
                     Ok(seeked_to) => {
                         info!("Reset position to {seeked_to:?}");
                         self.seek_required_ts = Some(seeked_to.required_ts);
-                        // Reset succeeded, but send the original error back to the caller since the intended seek failed
+                        // Reset succeeded, but send the original error back to the caller since the
+                        // intended seek failed
                         Err(e)
                     }
                     err_result @ Err(_) => {
@@ -210,7 +209,12 @@ where
         let millis = ((time.seconds as f64 + time.frac) * 1000.0) as u64;
         let retrieval_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .tap_err(|e| warn!("Unable to get duration from system time. The system clock is probably in a bad state: {e:?}"))
+            .tap_err(|e| {
+                warn!(
+                    "Unable to get duration from system time. The system clock is probably in a \
+                     bad state: {e:?}"
+                )
+            })
             .ok();
 
         CurrentPosition {
@@ -233,8 +237,9 @@ where
         let mut samples_skipped = 0;
         let volume = self.volume;
         if self.settings.enable_gapless {
-            // Edge case: if the volume is 0 then this will cause an issue because every sample will come back as silent
-            // Need to set the volume to 1 until we find the silence, then we can set it back
+            // Edge case: if the volume is 0 then this will cause an issue because every sample will
+            // come back as silent Need to set the volume to 1 until we find the
+            // silence, then we can set it back
             self.volume = T::IDENTITY;
         }
 
@@ -247,8 +252,8 @@ where
                 break;
             }
             if let Some(mut index) = self.buf.iter().position(|s| *s != T::MID) {
-                // Edge case: if the first non-silent sample is on an odd-numbered index, we'll start on the wrong channel
-                // This only matters for stereo outputs
+                // Edge case: if the first non-silent sample is on an odd-numbered index, we'll
+                // start on the wrong channel This only matters for stereo outputs
                 if self.output_channels == 2 && index % 2 == 1 {
                     index -= 1;
                 }
@@ -380,8 +385,9 @@ where
                             if err.kind() == io::ErrorKind::UnexpectedEof
                                 && err.to_string() == "end of stream" =>
                         {
-                            // Do not treat "end of stream" as a fatal error. It's currently the only way a
-                            // format reader can indicate the media is complete.
+                            // Do not treat "end of stream" as a fatal error. It's currently the
+                            // only way a format reader can indicate the
+                            // media is complete.
                             return Ok(None);
                         }
                         Err(Error::ResetRequired) => {

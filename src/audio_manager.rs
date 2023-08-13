@@ -1,3 +1,8 @@
+use cpal::{SampleRate, SizedSample, SupportedStreamConfig};
+use dasp::sample::Sample as DaspSample;
+use symphonia::core::conv::ConvertibleSample;
+use symphonia::core::sample::Sample;
+
 use crate::decoder::{
     Decoder, DecoderError, DecoderResult, DecoderSettings, ResampledDecoder, ResamplerSettings,
     Source,
@@ -5,9 +10,6 @@ use crate::decoder::{
 use crate::output::{
     AudioBackend, AudioOutput, OutputBuilder, RequestedOutputConfig, WriteBlockingError,
 };
-use cpal::{SampleRate, SizedSample, SupportedStreamConfig};
-use dasp::sample::Sample as DaspSample;
-use symphonia::core::{conv::ConvertibleSample, sample::Sample};
 
 #[derive(thiserror::Error, Debug)]
 pub enum WriteOutputError {
@@ -31,9 +33,9 @@ pub struct AudioManager<T: Sample + DaspSample, B: AudioBackend> {
 }
 
 impl<
-        T: Sample + DaspSample + SizedSample + ConvertibleSample + rubato::Sample + Send,
-        B: AudioBackend,
-    > AudioManager<T, B>
+    T: Sample + DaspSample + SizedSample + ConvertibleSample + rubato::Sample + Send,
+    B: AudioBackend,
+> AudioManager<T, B>
 {
     pub fn new(output_builder: OutputBuilder<B>, resampler_settings: ResamplerSettings) -> Self {
         let output_config = output_builder.default_output_config().unwrap();

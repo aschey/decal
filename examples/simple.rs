@@ -1,9 +1,9 @@
-use decal::{
-    decoder::{DecoderResult, DecoderSettings, ReadSeekSource, ResamplerSettings},
-    output::{CpalOutput, OutputBuilder, OutputSettings},
-    AudioManager,
-};
-use std::{error::Error, path::Path};
+use std::error::Error;
+use std::path::Path;
+
+use decal::decoder::{DecoderResult, DecoderSettings, ReadSeekSource, ResamplerSettings};
+use decal::output::{CpalOutput, OutputBuilder, OutputSettings};
+use decal::AudioManager;
 use tracing::error;
 
 fn main() -> Result<(), Box<dyn Error>> {

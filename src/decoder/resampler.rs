@@ -1,9 +1,11 @@
-use super::DecoderError;
-use super::{channel_buffer::ChannelBuffer, vec_ext::VecExt, Decoder};
 use dasp::sample::Sample as DaspSample;
 use rubato::{FftFixedInOut, Resampler};
 use symphonia::core::conv::ConvertibleSample;
 use symphonia::core::sample::Sample;
+
+use super::channel_buffer::ChannelBuffer;
+use super::vec_ext::VecExt;
+use super::{Decoder, DecoderError};
 
 struct ResampleDecoderInner<T: Sample + DaspSample> {
     written: usize,

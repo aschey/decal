@@ -1,6 +1,8 @@
-use super::{MockDevice, MockHost, MockOutput, OutputBuilder, RequestedOutputConfig};
-use cpal::{SampleFormat, SampleRate, SupportedBufferSize, SupportedStreamConfig};
 use std::vec;
+
+use cpal::{SampleFormat, SampleRate, SupportedBufferSize, SupportedStreamConfig};
+
+use super::{MockDevice, MockHost, MockOutput, OutputBuilder, RequestedOutputConfig};
 
 #[test]
 fn find_closest_config_default() {

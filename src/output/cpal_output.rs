@@ -1,5 +1,6 @@
-use super::{AudioBackend, DeviceTrait, HostTrait, StreamTrait};
 use cpal::traits::{DeviceTrait as _, HostTrait as _, StreamTrait as _};
+
+use super::{AudioBackend, DeviceTrait, HostTrait, StreamTrait};
 
 #[derive(Default, Clone)]
 pub struct CpalOutput {}

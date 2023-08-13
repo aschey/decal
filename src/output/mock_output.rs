@@ -1,13 +1,11 @@
-use super::{AudioBackend, DeviceTrait, HostTrait, StreamTrait};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{self};
+use std::sync::{Arc, Mutex, RwLock};
+use std::thread;
+
 use cpal::{Sample, SampleRate, SupportedStreamConfig, SupportedStreamConfigRange};
-use std::{
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        mpsc::{self},
-        Arc, Mutex, RwLock,
-    },
-    thread,
-};
+
+use super::{AudioBackend, DeviceTrait, HostTrait, StreamTrait};
 
 pub struct MockStream {
     started: Arc<AtomicBool>,

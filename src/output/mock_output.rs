@@ -44,7 +44,7 @@ impl Iterator for MockSupportedOutputConfigs {
         } else {
             let config = &self.configs[self.index];
             self.index += 1;
-            Some(config.clone())
+            Some(*config)
         }
     }
 }
@@ -120,7 +120,7 @@ impl DeviceTrait for MockDevice {
                     self.default_config.channels(),
                     self.default_min_sample_rate,
                     self.default_max_sample_rate,
-                    self.default_config.buffer_size().clone(),
+                    *self.default_config.buffer_size(),
                     self.default_config.sample_format(),
                 )],
                 self.additional_configs.clone(),

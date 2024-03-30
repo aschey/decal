@@ -1,4 +1,3 @@
-use cpal::{SampleRate, SizedSample, SupportedStreamConfig};
 use dasp::sample::Sample as DaspSample;
 use symphonia::core::conv::ConvertibleSample;
 use symphonia::core::sample::Sample;
@@ -8,7 +7,8 @@ use crate::decoder::{
     Source,
 };
 use crate::output::{
-    AudioBackend, AudioOutput, OutputBuilder, RequestedOutputConfig, WriteBlockingError,
+    AudioBackend, AudioOutput, DecalSample, OutputBuilder, RequestedOutputConfig, SampleRate,
+    SupportedStreamConfig, WriteBlockingError,
 };
 
 #[derive(thiserror::Error, Debug)]
@@ -32,10 +32,8 @@ pub struct AudioManager<T: Sample + DaspSample, B: AudioBackend> {
     volume: T::Float,
 }
 
-impl<
-    T: Sample + DaspSample + SizedSample + ConvertibleSample + rubato::Sample + Send,
-    B: AudioBackend,
-> AudioManager<T, B>
+impl<T: Sample + DecalSample + ConvertibleSample + rubato::Sample + Send, B: AudioBackend>
+    AudioManager<T, B>
 {
     pub fn new(output_builder: OutputBuilder<B>, resampler_settings: ResamplerSettings) -> Self {
         let output_config = output_builder.default_output_config().unwrap();
@@ -45,8 +43,8 @@ impl<
             .unwrap();
 
         let resampled = ResampledDecoder::<T>::new(
-            output_config.sample_rate().0 as usize,
-            output_config.channels() as usize,
+            output_config.sample_rate.0 as usize,
+            output_config.channels as usize,
             resampler_settings.clone(),
         );
 
@@ -85,7 +83,7 @@ impl<
         Decoder::<T>::new(
             source,
             self.volume,
-            self.output_config.channels() as usize,
+            self.output_config.channels as usize,
             decoder_settings,
         )
         .unwrap()
@@ -109,8 +107,8 @@ impl<
                 self.device_name.as_deref(),
                 RequestedOutputConfig {
                     sample_rate: Some(SampleRate(decoder.sample_rate() as u32)),
-                    channels: Some(self.output_config.channels()),
-                    sample_format: Some(<T as cpal::SizedSample>::FORMAT),
+                    channels: Some(self.output_config.channels),
+                    sample_format: Some(<T as DecalSample>::FORMAT),
                 },
             )
             .unwrap();
@@ -121,8 +119,8 @@ impl<
             .unwrap();
 
         self.resampled = ResampledDecoder::new(
-            self.output_config.sample_rate().0 as usize,
-            self.output_config.channels() as usize,
+            self.output_config.sample_rate.0 as usize,
+            self.output_config.channels as usize,
             self.resampler_settings.clone(),
         );
 

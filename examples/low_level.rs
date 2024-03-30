@@ -2,13 +2,13 @@ use std::error::Error;
 use std::path::Path;
 use std::time::Duration;
 
-use cpal::{SampleFormat, SampleRate};
 use decal::decoder::{
     Decoder, DecoderError, DecoderResult, DecoderSettings, ReadSeekSource, ResampledDecoder,
     ResamplerSettings,
 };
 use decal::output::{
-    AudioOutput, CpalOutput, OutputBuilder, OutputSettings, RequestedOutputConfig,
+    AudioOutput, CpalOutput, OutputBuilder, OutputSettings, RequestedOutputConfig, SampleFormat,
+    SampleRate,
 };
 use tap::TapFallible;
 use tracing::error;
@@ -38,8 +38,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let queue = vec!["examples/music-1.mp3", "examples/music-2.mp3"];
 
     let mut resampled = ResampledDecoder::new(
-        output_config.sample_rate().0 as usize,
-        output_config.channels() as usize,
+        output_config.sample_rate.0 as usize,
+        output_config.channels as usize,
         ResamplerSettings::default(),
     );
     let mut initialized = false;
@@ -53,7 +53,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             let mut decoder = Decoder::<f32>::new(
                 source,
                 1.0,
-                output_config.channels() as usize,
+                output_config.channels as usize,
                 DecoderSettings {
                     enable_gapless: true,
                 },
@@ -69,7 +69,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                     None,
                     RequestedOutputConfig {
                         sample_rate: Some(SampleRate(decoder.sample_rate() as u32)),
-                        channels: Some(output_config.channels()),
+                        channels: Some(output_config.channels),
                         sample_format: Some(SampleFormat::F32),
                     },
                 )?;
@@ -77,8 +77,8 @@ fn main() -> Result<(), Box<dyn Error>> {
                 output = output_builder.new_output(None, output_config.clone())?;
 
                 resampled = ResampledDecoder::new(
-                    output_config.sample_rate().0 as usize,
-                    output_config.channels() as usize,
+                    output_config.sample_rate.0 as usize,
+                    output_config.channels as usize,
                     ResamplerSettings::default(),
                 );
 

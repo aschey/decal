@@ -1,29 +1,200 @@
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
-use cpal::{
-    BackendSpecificError, BuildStreamError, ChannelCount, DefaultStreamConfigError,
-    DeviceNameError, DevicesError, HostId, HostUnavailable, PlayStreamError, SampleFormat,
-    SampleRate, SizedSample, StreamConfig, StreamError, SupportedStreamConfig,
-    SupportedStreamConfigRange, SupportedStreamConfigsError,
-};
 use rb::{RbConsumer, RbInspector, RbProducer, SpscRb, RB};
 use thiserror::Error;
 use tracing::{info, warn};
 
-mod cpal_output;
-pub use cpal_output::*;
+#[cfg(feature = "output-cpal")]
+mod cpal;
+#[cfg(feature = "output-cpal")]
+pub use cpal::*;
 #[cfg(feature = "mock")]
-mod mock_output;
+mod mock;
 #[cfg(feature = "mock")]
-pub use mock_output::*;
+pub use mock::*;
 
-pub trait StreamTrait {
+#[cfg(feature = "output-cubeb")]
+mod cubeb;
+#[cfg(feature = "output-cubeb")]
+pub use cubeb::*;
+
+#[derive(thiserror::Error, Debug)]
+pub enum PlayStreamError {}
+
+#[derive(thiserror::Error, Debug)]
+pub enum DeviceNameError {}
+
+#[derive(thiserror::Error, Debug)]
+pub enum SupportedStreamConfigsError {}
+
+#[derive(thiserror::Error, Debug)]
+pub enum DefaultStreamConfigError {}
+
+#[derive(thiserror::Error, Debug)]
+pub enum BuildStreamError {}
+
+#[derive(thiserror::Error, Debug)]
+pub enum StreamError {
+    #[error("")]
+    DeviceNotAvailable,
+    #[error("{0}")]
+    BackendSpecific(BackendSpecificError),
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum DevicesError {}
+
+#[derive(thiserror::Error, Debug)]
+pub enum HostUnavailableError {}
+
+#[derive(thiserror::Error, Debug)]
+pub enum BackendSpecificError {}
+
+pub trait Stream {
     fn play(&self) -> Result<(), PlayStreamError>;
 }
 
-pub trait DeviceTrait {
-    type Stream: StreamTrait;
+#[derive(PartialEq, Eq, Debug, Clone, Copy)]
+pub enum SampleFormat {
+    /// `i8` with a valid range of 'u8::MIN..=u8::MAX' with `0` being the origin
+    I8,
+
+    /// `i16` with a valid range of 'u16::MIN..=u16::MAX' with `0` being the origin
+    I16,
+
+    // /// `I24` with a valid range of '-(1 << 23)..(1 << 23)' with `0` being the origin
+    // I24,
+    /// `i32` with a valid range of 'u32::MIN..=u32::MAX' with `0` being the origin
+    I32,
+
+    // /// `I24` with a valid range of '-(1 << 47)..(1 << 47)' with `0` being the origin
+    // I48,
+    /// `i64` with a valid range of 'u64::MIN..=u64::MAX' with `0` being the origin
+    I64,
+
+    /// `u8` with a valid range of 'u8::MIN..=u8::MAX' with `1 << 7 == 128` being the origin
+    U8,
+
+    /// `u16` with a valid range of 'u16::MIN..=u16::MAX' with `1 << 15 == 32768` being the origin
+    U16,
+
+    // /// `U24` with a valid range of '0..16777216' with `1 << 23 == 8388608` being the origin
+    // U24,
+    /// `u32` with a valid range of 'u32::MIN..=u32::MAX' with `1 << 31` being the origin
+    U32,
+
+    // /// `U48` with a valid range of '0..(1 << 48)' with `1 << 47` being the origin
+    // U48,
+    /// `u64` with a valid range of 'u64::MIN..=u64::MAX' with `1 << 63` being the origin
+    U64,
+
+    /// `f32` with a valid range of `-1.0..1.0` with `0.0` being the origin
+    F32,
+
+    /// `f64` with a valid range of -1.0..1.0 with 0.0 being the origin
+    F64,
+}
+
+pub type FrameCount = u32;
+
+#[derive(PartialEq, Eq, Debug, Clone)]
+pub enum SupportedBufferSize {
+    Range {
+        min: FrameCount,
+        max: FrameCount,
+    },
+    /// In the case that the platform provides no way of getting the default
+    /// buffersize before starting a stream.
+    Unknown,
+}
+
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Copy)]
+pub struct SampleRate(pub u32);
+
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Copy)]
+pub struct HostId(u32);
+
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Copy)]
+pub enum BufferSize {
+    Default,
+    Fixed(u32),
+}
+
+pub type ChannelCount = u32;
+
+#[derive(PartialEq, Eq, Debug, Clone)]
+pub struct SupportedStreamConfig {
+    pub channels: ChannelCount,
+    pub sample_rate: SampleRate,
+    pub buffer_size: SupportedBufferSize,
+    pub sample_format: SampleFormat,
+}
+
+pub struct StreamConfig {
+    pub channels: ChannelCount,
+    pub sample_rate: SampleRate,
+    pub buffer_size: BufferSize,
+}
+
+#[derive(PartialEq, Eq, Debug, Clone)]
+pub struct SupportedStreamConfigRange {
+    pub(crate) channels: ChannelCount,
+    /// Minimum value for the samples rate of the supported formats.
+    pub(crate) min_sample_rate: SampleRate,
+    /// Maximum value for the samples rate of the supported formats.
+    pub(crate) max_sample_rate: SampleRate,
+    /// Buffersize ranges supported by the device
+    pub(crate) buffer_size: SupportedBufferSize,
+    /// Type of data expected by the device.
+    pub(crate) sample_format: SampleFormat,
+}
+
+impl SupportedStreamConfigRange {
+    fn with_sample_rate(self, sample_rate: SampleRate) -> SupportedStreamConfig {
+        SupportedStreamConfig {
+            channels: self.channels,
+            sample_rate,
+            buffer_size: self.buffer_size,
+            sample_format: self.sample_format,
+        }
+    }
+}
+
+#[cfg(feature = "cpal")]
+pub trait DecalSample:
+    ::cpal::SizedSample + dasp::Sample + Send + Sync + Default + 'static
+{
+    const FORMAT: SampleFormat;
+}
+
+#[cfg(feature = "cpal")]
+impl<T> DecalSample for T
+where
+    T: ::cpal::SizedSample + dasp::Sample + Send + Sync + Default + 'static,
+{
+    const FORMAT: SampleFormat = match <T as ::cpal::SizedSample>::FORMAT {
+        ::cpal::SampleFormat::I8 => SampleFormat::I8,
+        ::cpal::SampleFormat::I16 => SampleFormat::I16,
+        ::cpal::SampleFormat::I32 => SampleFormat::I32,
+        ::cpal::SampleFormat::I64 => SampleFormat::I64,
+        ::cpal::SampleFormat::U8 => SampleFormat::U8,
+        ::cpal::SampleFormat::U16 => SampleFormat::U16,
+        ::cpal::SampleFormat::U32 => SampleFormat::U32,
+        ::cpal::SampleFormat::U64 => SampleFormat::U64,
+        ::cpal::SampleFormat::F32 => SampleFormat::F32,
+        ::cpal::SampleFormat::F64 => SampleFormat::F64,
+        _ => unimplemented!(),
+    };
+}
+
+#[cfg(not(feature = "cpal"))]
+pub trait DecalSample: dasp::Sample + Send + Sync + Default {}
+
+#[cfg(not(feature = "cpal"))]
+impl<T> DecalSample for T where T: dasp::Sample + Send + Sync + Default {}
+
+pub trait Device {
     type SupportedOutputConfigs: Iterator<Item = SupportedStreamConfigRange>;
 
     fn default_output_config(&self) -> Result<SupportedStreamConfig, DefaultStreamConfigError>;
@@ -39,27 +210,26 @@ pub trait DeviceTrait {
         config: &StreamConfig,
         data_callback: D,
         error_callback: E,
-    ) -> Result<Self::Stream, BuildStreamError>
+    ) -> Result<Box<dyn Stream>, BuildStreamError>
     where
-        T: SizedSample,
-        D: FnMut(&mut [T]) + Send + 'static,
-        E: FnMut(StreamError) + Send + 'static;
+        T: DecalSample,
+        D: FnMut(&mut [T]) + Send + Sync + 'static,
+        E: FnMut(StreamError) + Send + Sync + 'static;
 }
 
-pub trait HostTrait {
-    type Device: DeviceTrait;
+pub trait Host {
+    type Device: Device;
     type Devices: Iterator<Item = Self::Device>;
     fn default_output_device(&self) -> Option<Self::Device>;
     fn output_devices(&self) -> Result<Self::Devices, DevicesError>;
 }
 
 pub trait AudioBackend: Clone {
-    type Host: HostTrait<Device = Self::Device> + Send + Sync + 'static;
-    type Stream: StreamTrait;
-    type Device: DeviceTrait<Stream = Self::Stream>;
+    type Host: Host<Device = Self::Device> + Send + Sync + 'static;
+    type Device: Device;
 
     fn default_host(&self) -> Self::Host;
-    fn host_from_id(&self, id: HostId) -> Result<Self::Host, HostUnavailable>;
+    // fn host_from_id(&self, id: HostId) -> Result<Self::Host, HostUnavailableError>;
 }
 
 #[derive(Debug, Error)]
@@ -141,25 +311,25 @@ impl<B: AudioBackend> OutputBuilder<B> {
         self.settings = settings;
     }
 
-    pub fn new_from_host_id<F1, F2>(
-        backend: B,
-        host_id: cpal::HostId,
-        settings: OutputSettings,
-        on_device_changed: F1,
-        on_error: F2,
-    ) -> Result<Self, HostUnavailable>
-    where
-        B: AudioBackend,
-        F1: Fn() + Send + Sync + 'static,
-        F2: Fn(BackendSpecificError) + Send + Sync + 'static,
-    {
-        Ok(Self::new_from_host(
-            backend.host_from_id(host_id)?,
-            settings,
-            on_device_changed,
-            on_error,
-        ))
-    }
+    // pub fn new_from_host_id<F1, F2>(
+    //     backend: B,
+    //     host_id: HostId,
+    //     settings: OutputSettings,
+    //     on_device_changed: F1,
+    //     on_error: F2,
+    // ) -> Result<Self, HostUnavailableError>
+    // where
+    //     B: AudioBackend,
+    //     F1: Fn() + Send + Sync + 'static,
+    //     F2: Fn(BackendSpecificError) + Send + Sync + 'static,
+    // {
+    //     Ok(Self::new_from_host(
+    //         backend.host_from_id(host_id)?,
+    //         settings,
+    //         on_device_changed,
+    //         on_error,
+    //     ))
+    // }
 
     pub fn new_from_host<F1, F2>(
         host: B::Host,
@@ -248,15 +418,13 @@ impl<B: AudioBackend> OutputBuilder<B> {
             .default_output_config()
             .map_err(AudioOutputError::OutputDeviceConfigError)?;
 
-        let channels = config.channels.unwrap_or(default_config.channels());
-        let sample_rate = config.sample_rate.unwrap_or(default_config.sample_rate());
-        let sample_format = config
-            .sample_format
-            .unwrap_or(default_config.sample_format());
+        let channels = config.channels.unwrap_or(default_config.channels);
+        let sample_rate = config.sample_rate.unwrap_or(default_config.sample_rate);
+        let sample_format = config.sample_format.unwrap_or(default_config.sample_format);
 
-        if default_config.channels() == channels
-            && default_config.sample_rate() == sample_rate
-            && default_config.sample_format() == sample_format
+        if default_config.channels == channels
+            && default_config.sample_rate == sample_rate
+            && default_config.sample_format == sample_format
         {
             return Ok(default_config);
         }
@@ -265,10 +433,10 @@ impl<B: AudioBackend> OutputBuilder<B> {
             .supported_output_configs()
             .map_err(AudioOutputError::LoadConfigsError)?
             .find(|c| {
-                c.channels() == channels
-                    && c.sample_format() == sample_format
-                    && c.min_sample_rate() <= sample_rate
-                    && c.max_sample_rate() >= sample_rate
+                c.channels == channels
+                    && c.sample_format == sample_format
+                    && c.min_sample_rate <= sample_rate
+                    && c.max_sample_rate >= sample_rate
             })
         {
             return Ok(matched_config.with_sample_rate(sample_rate));
@@ -281,11 +449,11 @@ impl<B: AudioBackend> OutputBuilder<B> {
         self.host.default_output_device()
     }
 
-    pub fn output_devices(&self) -> Result<<B::Host as HostTrait>::Devices, DevicesError> {
+    pub fn output_devices(&self) -> Result<<B::Host as Host>::Devices, DevicesError> {
         self.host.output_devices()
     }
 
-    pub fn new_output<T: SizedSample + Default + Send + 'static>(
+    pub fn new_output<T: DecalSample + Default + 'static>(
         &self,
         device_name: Option<String>,
         config: SupportedStreamConfig,
@@ -325,7 +493,7 @@ impl<B: AudioBackend> OutputBuilder<B> {
 pub struct AudioOutput<T, B: AudioBackend> {
     ring_buf_producer: rb::Producer<T>,
     ring_buf: SpscRb<T>,
-    stream: Option<B::Stream>,
+    stream: Option<Box<dyn Stream>>,
     on_device_changed: Arc<Box<dyn Fn() + Send + Sync>>,
     on_error: Arc<Box<dyn Fn(BackendSpecificError) + Send + Sync>>,
     device: B::Device,
@@ -333,7 +501,7 @@ pub struct AudioOutput<T, B: AudioBackend> {
     settings: OutputSettings,
 }
 
-impl<T: SizedSample + Default + Send + 'static, B: AudioBackend> AudioOutput<T, B> {
+impl<T: DecalSample + Default + 'static, B: AudioBackend> AudioOutput<T, B> {
     pub(crate) fn new(
         device: B::Device,
         config: SupportedStreamConfig,
@@ -344,7 +512,7 @@ impl<T: SizedSample + Default + Send + 'static, B: AudioBackend> AudioOutput<T, 
         let buffer_duration = Duration::from_millis(200);
         let buffer_ms: usize = buffer_duration.as_millis().try_into().unwrap();
         let ring_buf = SpscRb::<T>::new(
-            ((buffer_ms * config.sample_rate().0 as usize) / 1000) * config.channels() as usize,
+            ((buffer_ms * config.sample_rate.0 as usize) / 1000) * config.channels as usize,
         );
 
         Self {
@@ -428,15 +596,16 @@ impl<T: SizedSample + Default + Send + 'static, B: AudioBackend> AudioOutput<T, 
     fn create_stream(
         &self,
         ring_buf_consumer: rb::Consumer<T>,
-    ) -> Result<B::Stream, AudioOutputError> {
-        let channels = self.config.channels();
+    ) -> Result<Box<dyn Stream>, AudioOutputError> {
+        let channels = self.config.channels;
         let config = StreamConfig {
-            channels: self.config.channels(),
-            sample_rate: self.config.sample_rate(),
-            buffer_size: cpal::BufferSize::Default,
+            channels: self.config.channels,
+            sample_rate: self.config.sample_rate,
+            buffer_size: BufferSize::Default,
         };
+
         info!("Output channels = {channels}");
-        info!("Output sample rate = {}", self.config.sample_rate().0);
+        info!("Output sample rate = {}", self.config.sample_rate.0);
 
         let filler = T::EQUILIBRIUM;
         let on_error = self.on_error.clone();
@@ -460,7 +629,7 @@ impl<T: SizedSample + Default + Send + 'static, B: AudioBackend> AudioOutput<T, 
                         info!("Device unplugged. Resetting...");
                         on_device_changed();
                     }
-                    StreamError::BackendSpecific { err } => {
+                    StreamError::BackendSpecific(err) => {
                         on_error(err);
                     }
                 },

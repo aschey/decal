@@ -1,8 +1,7 @@
 use std::vec;
 
-use cpal::{SampleFormat, SampleRate, SupportedBufferSize, SupportedStreamConfig};
-
 use super::{MockDevice, MockHost, MockOutput, OutputBuilder, RequestedOutputConfig};
+use crate::output::{SampleFormat, SampleRate, SupportedBufferSize, SupportedStreamConfig};
 
 #[test]
 fn find_closest_config_default() {
@@ -11,12 +10,12 @@ fn find_closest_config_default() {
             default_host: MockHost {
                 default_device: MockDevice::new(
                     "test-device".to_owned(),
-                    SupportedStreamConfig::new(
-                        2,
-                        SampleRate(44100),
-                        SupportedBufferSize::Range { min: 0, max: 9999 },
-                        SampleFormat::F32,
-                    ),
+                    SupportedStreamConfig {
+                        channels: 2,
+                        sample_rate: SampleRate(44100),
+                        buffer_size: SupportedBufferSize::Range { min: 0, max: 9999 },
+                        sample_format: SampleFormat::F32,
+                    },
                     SampleRate(1024),
                     SampleRate(192000),
                     vec![],
@@ -41,11 +40,11 @@ fn find_closest_config_default() {
 
     assert_eq!(
         SupportedBufferSize::Range { min: 0, max: 9999 },
-        *config.buffer_size()
+        config.buffer_size
     );
-    assert_eq!(2, config.channels());
-    assert_eq!(SampleFormat::F32, config.sample_format());
-    assert_eq!(SampleRate(44100), config.sample_rate());
+    assert_eq!(2, config.channels);
+    assert_eq!(SampleFormat::F32, config.sample_format);
+    assert_eq!(SampleRate(44100), config.sample_rate);
 }
 
 #[test]
@@ -55,12 +54,12 @@ fn find_closest_config_sample_rate() {
             default_host: MockHost {
                 default_device: MockDevice::new(
                     "test-device".to_owned(),
-                    SupportedStreamConfig::new(
-                        2,
-                        SampleRate(44100),
-                        SupportedBufferSize::Range { min: 0, max: 9999 },
-                        SampleFormat::F32,
-                    ),
+                    SupportedStreamConfig {
+                        channels: 2,
+                        sample_rate: SampleRate(44100),
+                        buffer_size: SupportedBufferSize::Range { min: 0, max: 9999 },
+                        sample_format: SampleFormat::F32,
+                    },
                     SampleRate(1024),
                     SampleRate(192000),
                     vec![],
@@ -85,11 +84,11 @@ fn find_closest_config_sample_rate() {
 
     assert_eq!(
         SupportedBufferSize::Range { min: 0, max: 9999 },
-        *config.buffer_size()
+        config.buffer_size
     );
-    assert_eq!(2, config.channels());
-    assert_eq!(SampleFormat::F32, config.sample_format());
-    assert_eq!(SampleRate(48000), config.sample_rate());
+    assert_eq!(2, config.channels);
+    assert_eq!(SampleFormat::F32, config.sample_format);
+    assert_eq!(SampleRate(48000), config.sample_rate);
 }
 
 #[test]
@@ -99,24 +98,24 @@ fn find_closest_config_channel_mismatch() {
             default_host: MockHost {
                 default_device: MockDevice::new(
                     "test-device".to_owned(),
-                    SupportedStreamConfig::new(
-                        2,
-                        SampleRate(44100),
-                        SupportedBufferSize::Range { min: 0, max: 9999 },
-                        SampleFormat::F32,
-                    ),
+                    SupportedStreamConfig {
+                        channels: 2,
+                        sample_rate: SampleRate(44100),
+                        buffer_size: SupportedBufferSize::Range { min: 0, max: 9999 },
+                        sample_format: SampleFormat::F32,
+                    },
                     SampleRate(1024),
                     SampleRate(192000),
                     vec![],
                 ),
                 additional_devices: vec![MockDevice::new(
                     "second-device".to_owned(),
-                    SupportedStreamConfig::new(
-                        1,
-                        SampleRate(48000),
-                        SupportedBufferSize::Range { min: 0, max: 9999 },
-                        SampleFormat::F32,
-                    ),
+                    SupportedStreamConfig {
+                        channels: 1,
+                        sample_rate: SampleRate(48000),
+                        buffer_size: SupportedBufferSize::Range { min: 0, max: 9999 },
+                        sample_format: SampleFormat::F32,
+                    },
                     SampleRate(1024),
                     SampleRate(192000),
                     vec![],
@@ -140,11 +139,11 @@ fn find_closest_config_channel_mismatch() {
 
     assert_eq!(
         SupportedBufferSize::Range { min: 0, max: 9999 },
-        *config.buffer_size()
+        config.buffer_size
     );
-    assert_eq!(2, config.channels());
-    assert_eq!(SampleFormat::F32, config.sample_format());
-    assert_eq!(SampleRate(48000), config.sample_rate());
+    assert_eq!(2, config.channels);
+    assert_eq!(SampleFormat::F32, config.sample_format);
+    assert_eq!(SampleRate(48000), config.sample_rate);
 }
 
 #[test]
@@ -154,24 +153,24 @@ fn find_closest_config_sample_rate_mismatch() {
             default_host: MockHost {
                 default_device: MockDevice::new(
                     "test-device".to_owned(),
-                    SupportedStreamConfig::new(
-                        2,
-                        SampleRate(44100),
-                        SupportedBufferSize::Range { min: 0, max: 9999 },
-                        SampleFormat::F32,
-                    ),
+                    SupportedStreamConfig {
+                        channels: 2,
+                        sample_rate: SampleRate(44100),
+                        buffer_size: SupportedBufferSize::Range { min: 0, max: 9999 },
+                        sample_format: SampleFormat::F32,
+                    },
                     SampleRate(44100),
                     SampleRate(44100),
                     vec![],
                 ),
                 additional_devices: vec![MockDevice::new(
                     "second-device".to_owned(),
-                    SupportedStreamConfig::new(
-                        1,
-                        SampleRate(48000),
-                        SupportedBufferSize::Range { min: 0, max: 9999 },
-                        SampleFormat::F32,
-                    ),
+                    SupportedStreamConfig {
+                        channels: 1,
+                        sample_rate: SampleRate(48000),
+                        buffer_size: SupportedBufferSize::Range { min: 0, max: 9999 },
+                        sample_format: SampleFormat::F32,
+                    },
                     SampleRate(1024),
                     SampleRate(192000),
                     vec![],
@@ -195,11 +194,11 @@ fn find_closest_config_sample_rate_mismatch() {
 
     assert_eq!(
         SupportedBufferSize::Range { min: 0, max: 9999 },
-        *config.buffer_size()
+        config.buffer_size
     );
-    assert_eq!(2, config.channels());
-    assert_eq!(SampleFormat::F32, config.sample_format());
-    assert_eq!(SampleRate(44100), config.sample_rate());
+    assert_eq!(2, config.channels);
+    assert_eq!(SampleFormat::F32, config.sample_format);
+    assert_eq!(SampleRate(44100), config.sample_rate);
 }
 
 #[test]
@@ -209,24 +208,24 @@ fn find_closest_config_non_default_device() {
             default_host: MockHost {
                 default_device: MockDevice::new(
                     "test-device".to_owned(),
-                    SupportedStreamConfig::new(
-                        2,
-                        SampleRate(44100),
-                        SupportedBufferSize::Range { min: 0, max: 9999 },
-                        SampleFormat::F32,
-                    ),
+                    SupportedStreamConfig {
+                        channels: 2,
+                        sample_rate: SampleRate(44100),
+                        buffer_size: SupportedBufferSize::Range { min: 0, max: 9999 },
+                        sample_format: SampleFormat::F32,
+                    },
                     SampleRate(1024),
                     SampleRate(192000),
                     vec![],
                 ),
                 additional_devices: vec![MockDevice::new(
                     "second-device".to_owned(),
-                    SupportedStreamConfig::new(
-                        2,
-                        SampleRate(48000),
-                        SupportedBufferSize::Range { min: 0, max: 9999 },
-                        SampleFormat::F32,
-                    ),
+                    SupportedStreamConfig {
+                        channels: 2,
+                        sample_rate: SampleRate(48000),
+                        buffer_size: SupportedBufferSize::Range { min: 0, max: 9999 },
+                        sample_format: SampleFormat::F32,
+                    },
                     SampleRate(1024),
                     SampleRate(192000),
                     vec![],
@@ -250,9 +249,9 @@ fn find_closest_config_non_default_device() {
 
     assert_eq!(
         SupportedBufferSize::Range { min: 0, max: 9999 },
-        *config.buffer_size()
+        config.buffer_size
     );
-    assert_eq!(2, config.channels());
-    assert_eq!(SampleFormat::F32, config.sample_format());
-    assert_eq!(SampleRate(48000), config.sample_rate());
+    assert_eq!(2, config.channels);
+    assert_eq!(SampleFormat::F32, config.sample_format);
+    assert_eq!(SampleRate(48000), config.sample_rate);
 }

@@ -3,54 +3,20 @@ use std::sync::mpsc::{self};
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 
-use cpal::{Sample, SampleRate, SupportedStreamConfig, SupportedStreamConfigRange};
+use dasp::Sample;
 
-use super::{AudioBackend, DeviceTrait, HostTrait, StreamTrait};
+use super::{
+    AudioBackend, BuildStreamError, DecalSample, DefaultStreamConfigError, Device, DeviceNameError,
+    DevicesError, Host, PlayStreamError, SampleRate, Stream, StreamConfig, StreamError,
+    SupportedStreamConfig, SupportedStreamConfigRange, SupportedStreamConfigsError,
+};
 
 pub struct MockStream {
     started: Arc<AtomicBool>,
 }
 
-pub struct MockDevices {
-    index: usize,
-    devices: Vec<MockDevice>,
-}
-
-impl Iterator for MockDevices {
-    type Item = MockDevice;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.index == self.devices.len() {
-            None
-        } else {
-            let device = &self.devices[self.index];
-            self.index += 1;
-            Some(device.clone())
-        }
-    }
-}
-
-pub struct MockSupportedOutputConfigs {
-    index: usize,
-    configs: Vec<SupportedStreamConfigRange>,
-}
-
-impl Iterator for MockSupportedOutputConfigs {
-    type Item = SupportedStreamConfigRange;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.index == self.configs.len() {
-            None
-        } else {
-            let config = &self.configs[self.index];
-            self.index += 1;
-            Some(*config)
-        }
-    }
-}
-
-impl StreamTrait for MockStream {
-    fn play(&self) -> Result<(), cpal::PlayStreamError> {
+impl Stream for MockStream {
+    fn play(&self) -> Result<(), PlayStreamError> {
         self.started.store(true, Ordering::SeqCst);
         Ok(())
     }
@@ -95,50 +61,46 @@ impl MockDevice {
     }
 }
 
-impl DeviceTrait for MockDevice {
-    type Stream = MockStream;
+impl Device for MockDevice {
+    type SupportedOutputConfigs = Box<dyn Iterator<Item = SupportedStreamConfigRange>>;
 
-    type SupportedOutputConfigs = MockSupportedOutputConfigs;
-
-    fn default_output_config(
-        &self,
-    ) -> Result<SupportedStreamConfig, cpal::DefaultStreamConfigError> {
+    fn default_output_config(&self) -> Result<SupportedStreamConfig, DefaultStreamConfigError> {
         Ok(self.default_config.clone())
     }
 
-    fn name(&self) -> Result<String, cpal::DeviceNameError> {
+    fn name(&self) -> Result<String, DeviceNameError> {
         Ok(self.name.to_owned())
     }
 
     fn supported_output_configs(
         &self,
-    ) -> Result<Self::SupportedOutputConfigs, cpal::SupportedStreamConfigsError> {
-        Ok(MockSupportedOutputConfigs {
-            index: 0,
-            configs: [
-                vec![SupportedStreamConfigRange::new(
-                    self.default_config.channels(),
-                    self.default_min_sample_rate,
-                    self.default_max_sample_rate,
-                    *self.default_config.buffer_size(),
-                    self.default_config.sample_format(),
-                )],
+    ) -> Result<Self::SupportedOutputConfigs, SupportedStreamConfigsError> {
+        Ok(Box::new(
+            [
+                vec![SupportedStreamConfigRange {
+                    channels: self.default_config.channels,
+                    min_sample_rate: self.default_min_sample_rate,
+                    max_sample_rate: self.default_max_sample_rate,
+                    buffer_size: self.default_config.buffer_size.clone(),
+                    sample_format: self.default_config.sample_format,
+                }],
                 self.additional_configs.clone(),
             ]
-            .concat(),
-        })
+            .concat()
+            .into_iter(),
+        ))
     }
 
     fn build_output_stream<T, D, E>(
         &self,
-        _config: &cpal::StreamConfig,
+        _config: &StreamConfig,
         mut data_callback: D,
         _error_callback: E,
-    ) -> Result<Self::Stream, cpal::BuildStreamError>
+    ) -> Result<Box<dyn Stream>, BuildStreamError>
     where
-        T: cpal::SizedSample,
+        T: DecalSample,
         D: FnMut(&mut [T]) + Send + 'static,
-        E: FnMut(cpal::StreamError) + Send + 'static,
+        E: FnMut(StreamError) + Send + Sync + 'static,
     {
         let started = Arc::new(AtomicBool::new(false));
 
@@ -158,7 +120,7 @@ impl DeviceTrait for MockDevice {
             }
         });
 
-        Ok(MockStream { started })
+        Ok(Box::new(MockStream { started }))
     }
 }
 
@@ -168,24 +130,24 @@ pub struct MockHost {
     pub additional_devices: Vec<MockDevice>,
 }
 
-impl HostTrait for MockHost {
+impl Host for MockHost {
     type Device = MockDevice;
 
-    type Devices = MockDevices;
+    type Devices = Box<dyn Iterator<Item = MockDevice>>;
 
     fn default_output_device(&self) -> Option<Self::Device> {
         Some(self.default_device.clone())
     }
 
-    fn output_devices(&self) -> Result<Self::Devices, cpal::DevicesError> {
-        Ok(MockDevices {
-            index: 0,
-            devices: [
+    fn output_devices(&self) -> Result<Self::Devices, DevicesError> {
+        Ok(Box::new(
+            [
                 vec![self.default_device.clone()],
                 self.additional_devices.clone(),
             ]
-            .concat(),
-        })
+            .concat()
+            .into_iter(),
+        ))
     }
 }
 
@@ -197,15 +159,13 @@ pub struct MockOutput {
 impl AudioBackend for MockOutput {
     type Host = MockHost;
 
-    type Stream = MockStream;
-
     type Device = MockDevice;
 
     fn default_host(&self) -> Self::Host {
         self.default_host.clone()
     }
 
-    fn host_from_id(&self, _id: cpal::HostId) -> Result<Self::Host, cpal::HostUnavailable> {
-        Ok(self.default_host.clone())
-    }
+    // fn host_from_id(&self, _id: HostId) -> Result<Self::Host, HostUnavailableError> {
+    //     Ok(self.default_host.clone())
+    // }
 }

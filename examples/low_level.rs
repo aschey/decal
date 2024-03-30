@@ -115,7 +115,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                         break false;
                     }
                     Err(e) => {
-                        return Err(e)?;
+                        Err(e)?;
                     }
                 }
                 current_position = decoder.current_position().position;

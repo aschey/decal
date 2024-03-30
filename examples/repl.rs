@@ -12,7 +12,7 @@ use decal::output::{AudioBackend, CpalOutput, OutputBuilder, OutputSettings};
 use decal::{AudioManager, WriteOutputError};
 use reedline::{
     default_emacs_keybindings, Color, ColumnarMenu, DefaultCompleter, DefaultPrompt, Emacs,
-    KeyCode, KeyModifiers, Reedline, ReedlineEvent, ReedlineMenu, Signal,
+    KeyCode, KeyModifiers, MenuBuilder, Reedline, ReedlineEvent, ReedlineMenu, Signal,
 };
 use tracing::error;
 
@@ -110,8 +110,7 @@ fn main() -> io::Result<()> {
         let sig = line_editor.read_line(&prompt)?;
         match sig {
             Signal::Success(buffer) => {
-                let buffer = buffer.to_lowercase();
-                match (buffer.as_str(), buffer.split_once(' ')) {
+                match (buffer.to_lowercase().as_str(), buffer.split_once(' ')) {
                     (_, Some(("add", val))) => {
                         queue_tx.send(val.to_owned()).unwrap();
                     }
@@ -186,6 +185,7 @@ fn event_loop<B: AudioBackend>(
             }
         };
         loop {
+            println!("{current_file}");
             let source = Box::new(ReadSeekSource::from_path(Path::new(&current_file)));
             let mut decoder = manager.init_decoder(
                 source,
@@ -253,7 +253,7 @@ fn event_loop<B: AudioBackend>(
                         break false;
                     }
                     Err(e) => {
-                        return Err(e)?;
+                        Err(e)?;
                     }
                 }
 

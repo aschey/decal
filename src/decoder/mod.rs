@@ -1,8 +1,6 @@
-use std::io;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use dasp::sample::Sample as DaspSample;
-use symphonia::core::audio::{Channels, SampleBuffer, SignalSpec};
 use symphonia::core::codecs::{Decoder as SymphoniaDecoder, DecoderOptions};
 use symphonia::core::conv::ConvertibleSample;
 use symphonia::core::errors::Error;
@@ -62,7 +60,7 @@ pub struct DecoderSettings {
 
 pub struct Decoder<T: Sample + dasp::sample::Sample> {
     buf: Vec<T>,
-    sample_buf: SampleBuffer<T>,
+    sample_buf: Vec<T>,
     decoder: Box<dyn SymphoniaDecoder>,
     reader: Box<dyn FormatReader>,
     time_base: TimeBase,
@@ -100,17 +98,11 @@ where
         };
         let metadata_opts = MetadataOptions::default();
 
-        let probed = match symphonia::default::get_probe().format(
-            &hint,
-            mss,
-            &format_opts,
-            &metadata_opts,
-        ) {
-            Ok(probed) => probed,
-            Err(e) => return Err(DecoderError::FormatNotFound(e)),
-        };
-
-        let reader = probed.format;
+        let reader =
+            match symphonia::default::get_probe().format(&hint, mss, format_opts, metadata_opts) {
+                Ok(probed) => probed,
+                Err(e) => return Err(DecoderError::FormatNotFound(e)),
+            };
 
         let track = match reader.default_track() {
             Some(track) => track.to_owned(),
@@ -140,7 +132,7 @@ where
             output_channels,
             track_id: track.id,
             buf: vec![],
-            sample_buf: SampleBuffer::<T>::new(0, SignalSpec::new(0, Channels::all())),
+            sample_buf: vec![],
             volume,
             timestamp: 0,
             paused: false,
@@ -305,11 +297,10 @@ where
         };
 
         if self.sample_rate == 0 {
-            let duration = decoded.capacity();
-            let spec = *decoded.spec();
-            let sample_rate = spec.rate as usize;
+            let spec = decoded.spec();
+            let sample_rate = spec.rate() as usize;
             self.sample_rate = sample_rate;
-            let channels = spec.channels.count();
+            let channels = spec.channels().count();
             self.input_channels = channels;
 
             info!("Input channels = {channels}");
@@ -320,18 +311,18 @@ where
                     "Audio sources with more than 2 channels are not supported".to_owned(),
                 ));
             }
-            self.sample_buf = SampleBuffer::<T>::new(duration as u64, spec);
         }
 
-        self.sample_buf.copy_interleaved_ref(decoded);
-        let samples_len = self.sample_buf.samples().len();
+        let samples_len = decoded.samples_interleaved();
+        self.sample_buf.resize(samples_len, T::MID);
+        decoded.copy_to_slice_interleaved(&mut self.sample_buf);
 
         match (self.input_channels, self.output_channels) {
             (1, 2) => {
                 self.adjust_buffer_size(samples_len * 2);
 
                 let mut i = 0;
-                for sample in self.sample_buf.samples().iter() {
+                for sample in self.sample_buf.iter() {
                     self.buf[i] = (*sample).mul_amp(self.volume);
                     self.buf[i + 1] = (*sample).mul_amp(self.volume);
                     i += 2;
@@ -340,7 +331,7 @@ where
             (2, 1) => {
                 self.adjust_buffer_size(samples_len / 2);
 
-                for (i, sample) in self.sample_buf.samples().chunks_exact(2).enumerate() {
+                for (i, sample) in self.sample_buf.chunks_exact(2).enumerate() {
                     self.buf[i] = (sample[0] + sample[1])
                         .mul_amp(0.5.to_sample())
                         .mul_amp(self.volume);
@@ -349,7 +340,7 @@ where
             _ => {
                 self.adjust_buffer_size(samples_len);
 
-                for (i, sample) in self.sample_buf.samples().iter().enumerate() {
+                for (i, sample) in self.sample_buf.iter().enumerate() {
                     self.buf[i] = (*sample).mul_amp(self.volume);
                 }
             }
@@ -369,7 +360,7 @@ where
             loop {
                 let packet = loop {
                     match self.reader.next_packet() {
-                        Ok(packet) => {
+                        Ok(Some(packet)) => {
                             if packet.track_id() == self.track_id {
                                 if let Some(required_ts) = self.seek_required_ts {
                                     if packet.ts() < required_ts {
@@ -381,13 +372,7 @@ where
                                 break packet;
                             }
                         }
-                        Err(Error::IoError(err))
-                            if err.kind() == io::ErrorKind::UnexpectedEof
-                                && err.to_string() == "end of stream" =>
-                        {
-                            // Do not treat "end of stream" as a fatal error. It's currently the
-                            // only way a format reader can indicate the
-                            // media is complete.
+                        Ok(None) => {
                             return Ok(None);
                         }
                         Err(Error::ResetRequired) => {

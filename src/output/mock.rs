@@ -20,6 +20,11 @@ impl Stream for MockStream {
         self.started.store(true, Ordering::SeqCst);
         Ok(())
     }
+
+    fn stop(&self) -> Result<(), PlayStreamError> {
+        self.started.store(false, Ordering::SeqCst);
+        Ok(())
+    }
 }
 
 #[derive(Clone)]

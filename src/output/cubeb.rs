@@ -1,25 +1,46 @@
 use std::cell::OnceCell;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use cubeb::{
-    self, ChannelLayout, Context, DeviceFormat, DeviceId, DeviceInfo, DeviceType, MonoFrame,
-    StereoFrame, StreamPrefs,
+    self, ChannelLayout, Context, DeviceFormat, DeviceId, DeviceInfo, DeviceState, DeviceType,
+    MonoFrame, StereoFrame, StreamPrefs,
 };
 use cubeb_core::DevicePref;
 
 use super::{
     AudioBackend, BackendSpecificError, DecalSample, DefaultStreamConfigError, Device, Host,
-    SampleFormat, SampleRate, Stream, StreamError, SupportedBufferSize, SupportedStreamConfig,
-    SupportedStreamConfigRange,
+    SampleFormat, SampleRate, Stream, StreamConfig, StreamError, SupportedBufferSize,
+    SupportedStreamConfig, SupportedStreamConfigRange,
 };
 
 thread_local! {
     static CONTEXT: OnceCell<Context> = OnceCell::default();
+    #[cfg(windows)]
+    static COM_INIT: AtomicBool = const { std::sync::atomic::AtomicBool::new(false) };
 }
 
 fn with_context<F, T>(f: F) -> T
 where
     F: FnOnce(&Context) -> T,
 {
+    #[cfg(windows)]
+    COM_INIT.with(|init| {
+        if !init.load(Ordering::Relaxed) {
+            unsafe {
+                let code = windows_sys::Win32::System::Com::CoInitializeEx(
+                    std::ptr::null(),
+                    windows_sys::Win32::System::Com::COINIT_MULTITHREADED as u32,
+                );
+                // S_FALSE
+                if code == 0x1 {
+                    tracing::error!("COM library was already initialized");
+                } else if code != 0x0 {
+                    tracing::error!("COM initialization error. HRESULT {code}");
+                }
+            }
+            init.store(true, Ordering::Relaxed);
+        }
+    });
     CONTEXT.with(|c| {
         let context =
             c.get_or_init(|| cubeb::init("context").expect("failed to initialize context"));
@@ -48,7 +69,7 @@ impl CubebDevice {
         let mut configs = vec![];
         if device
             .format()
-            .contains(DeviceFormat::F32BE | DeviceFormat::F32LE)
+            .intersects(DeviceFormat::F32BE | DeviceFormat::F32LE)
         {
             configs.push(SupportedStreamConfigRange {
                 channels: device.max_channels(),
@@ -61,7 +82,7 @@ impl CubebDevice {
 
         if device
             .format()
-            .contains(DeviceFormat::S16BE | DeviceFormat::S16LE)
+            .intersects(DeviceFormat::S16BE | DeviceFormat::S16LE)
         {
             configs.push(SupportedStreamConfigRange {
                 channels: device.max_channels(),
@@ -88,6 +109,66 @@ impl CubebDevice {
             device_id: device.devid(),
         }
     }
+
+    fn get_stream<S: DecalSample, T, D, E>(
+        &self,
+        config: &StreamConfig,
+        mut data_callback: D,
+        mut error_callback: E,
+    ) -> Box<dyn Stream>
+    where
+        T: 'static,
+        D: FnMut(&mut [T]) + Send + Sync + 'static,
+        E: FnMut(super::StreamError) + Send + Sync + 'static,
+    {
+        let params = cubeb::StreamParamsBuilder::new()
+            .channels(config.channels)
+            .format(match <S as DecalSample>::FORMAT {
+                SampleFormat::I32 => cubeb::SampleFormat::S16NE,
+                SampleFormat::F32 => cubeb::SampleFormat::Float32NE,
+                _ => unimplemented!(),
+            })
+            .layout(if config.channels > 1 {
+                ChannelLayout::STEREO
+            } else {
+                ChannelLayout::MONO
+            })
+            .rate(config.sample_rate.0)
+            .prefs(StreamPrefs::NONE)
+            .take();
+        let latency = with_context(|c| c.min_latency(&params).unwrap());
+
+        let mut builder = cubeb::StreamBuilder::<T>::new();
+        builder
+            .name("stream")
+            .latency(latency)
+            .output(self.device_id, &params)
+            .data_callback(move |_, output| {
+                data_callback(output);
+                output.len() as isize
+            })
+            .state_callback(move |state| {
+                match state {
+                    cubeb::State::Started => {}
+                    cubeb::State::Stopped => {}
+                    cubeb::State::Drained => {}
+                    cubeb::State::Error => {
+                        error_callback(StreamError::BackendSpecific(BackendSpecificError(
+                            "Stream disabled".to_string(),
+                        )));
+                    }
+                };
+            });
+        let stream = with_context(move |ctx| {
+            let stream = builder.init(ctx).unwrap();
+            stream.start().unwrap();
+            stream
+        });
+        Box::new(CubebStream {
+            stream,
+            started: AtomicBool::new(true),
+        })
+    }
 }
 
 impl Device for CubebDevice {
@@ -109,9 +190,9 @@ impl Device for CubebDevice {
 
     fn build_output_stream<T, D, E>(
         &self,
-        config: &super::StreamConfig,
+        config: &StreamConfig,
         mut data_callback: D,
-        mut error_callback: E,
+        error_callback: E,
     ) -> Result<Box<dyn Stream>, super::BuildStreamError>
     where
         T: DecalSample,
@@ -119,30 +200,11 @@ impl Device for CubebDevice {
         E: FnMut(super::StreamError) + Send + Sync + 'static,
     {
         let mut buf = vec![T::EQUILIBRIUM; 1024];
-        let params = cubeb::StreamParamsBuilder::new()
-            .channels(config.channels)
-            .format(match <T as DecalSample>::FORMAT {
-                SampleFormat::I32 => cubeb::SampleFormat::S16NE,
-                SampleFormat::F32 => cubeb::SampleFormat::Float32NE,
-                _ => unimplemented!(),
-            })
-            .layout(if config.channels > 1 {
-                ChannelLayout::STEREO
-            } else {
-                ChannelLayout::MONO
-            })
-            .rate(config.sample_rate.0)
-            .prefs(StreamPrefs::NONE)
-            .take();
-        let latency = with_context(|c| c.min_latency(&params).unwrap());
 
         if config.channels > 1 {
-            let mut builder = cubeb::StreamBuilder::<StereoFrame<T>>::new();
-            builder
-                .name("stream")
-                .latency(latency)
-                .output(self.device_id, &params)
-                .data_callback(move |_, output| {
+            Ok(self.get_stream::<T, _, _, _>(
+                config,
+                move |output| {
                     let samples = output.len() * 2;
                     if buf.len() < samples {
                         buf.resize(samples, T::EQUILIBRIUM);
@@ -157,29 +219,13 @@ impl Device for CubebDevice {
 
                         i += 2;
                     }
-                    output.len() as isize
-                })
-                .state_callback(move |state| {
-                    match state {
-                        cubeb::State::Started => {}
-                        cubeb::State::Stopped => {}
-                        cubeb::State::Drained => {}
-                        cubeb::State::Error => {
-                            error_callback(StreamError::BackendSpecific(BackendSpecificError(
-                                "Stream disabled".to_string(),
-                            )));
-                        }
-                    };
-                });
-            let stream = with_context(move |ctx| builder.init(ctx).unwrap());
-            Ok(Box::new(CubebStream { stream }))
+                },
+                error_callback,
+            ))
         } else {
-            let mut builder = cubeb::StreamBuilder::<MonoFrame<T>>::new();
-            builder
-                .name("stream")
-                .latency(latency)
-                .output(self.device_id, &params)
-                .data_callback(move |_, output| {
+            Ok(self.get_stream::<T, _, _, _>(
+                config,
+                move |output| {
                     let samples = output.len() * 2;
                     if buf.len() < samples {
                         buf.resize(samples, T::EQUILIBRIUM);
@@ -189,21 +235,45 @@ impl Device for CubebDevice {
                     for (i, frame) in output.iter_mut().enumerate() {
                         *frame = MonoFrame::<T> { m: buf[i] };
                     }
-                    output.len() as isize
-                });
-            let stream = with_context(move |ctx| builder.init(ctx).unwrap());
-            Ok(Box::new(CubebStream { stream }))
+                },
+                error_callback,
+            ))
         }
     }
 }
 
 struct CubebStream<T> {
     stream: cubeb::Stream<T>,
+    started: AtomicBool,
+}
+
+impl<T> Drop for CubebStream<T> {
+    fn drop(&mut self) {
+        #[cfg(windows)]
+        COM_INIT.with(|init| {
+            if init.load(Ordering::Relaxed) {
+                unsafe {
+                    windows_sys::Win32::System::Com::CoUninitialize();
+                }
+                init.store(false, Ordering::Relaxed);
+            }
+        });
+    }
 }
 
 impl<T> Stream for CubebStream<T> {
     fn play(&self) -> Result<(), super::PlayStreamError> {
-        self.stream.start().unwrap();
+        if !self.started.swap(true, Ordering::SeqCst) {
+            self.stream.start().unwrap();
+        }
+
+        Ok(())
+    }
+
+    fn stop(&self) -> Result<(), super::PlayStreamError> {
+        if self.started.swap(false, Ordering::SeqCst) {
+            self.stream.stop().unwrap();
+        }
         Ok(())
     }
 }
@@ -222,7 +292,8 @@ impl Host for CubebHost {
                 .iter()
                 .find(|d| {
                     d.preferred()
-                        .contains(DevicePref::MULTIMEDIA | DevicePref::ALL)
+                        .intersects(DevicePref::MULTIMEDIA | DevicePref::ALL)
+                        && d.state() == DeviceState::Enabled
                 })
                 .map(CubebDevice::new)
         })

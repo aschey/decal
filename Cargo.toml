@@ -17,6 +17,12 @@ tap = "1"
 thiserror = "1"
 tracing = "0.1"
 
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.52", features = [
+    "Win32_System_Com",
+], optional = true }
+
 [dev-dependencies]
 crossterm = "0.27.0"
 reedline = "0.30.0"
@@ -25,10 +31,10 @@ tokio = { version = "1.37.0", features = ["macros", "rt-multi-thread"] }
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 
 [features]
-output = ["rb"]
-output-cpal = ["output", "cpal"]
-output-cubeb = ["output", "cubeb", "cubeb-core"]
-decoder = ["symphonia", "dasp", "rubato"]
+output = ["dep:rb"]
+output-cpal = ["output", "dep:cpal"]
+output-cubeb = ["output", "cubeb", "cubeb-core", "windows-sys"]
+decoder = ["dep:symphonia", "dep:dasp", "dep:rubato"]
 decoder-aac = ["decoder", "symphonia/aac"]
 decoder-flac = ["decoder", "symphonia/flac"]
 decoder-mp3 = ["decoder", "symphonia/mp3"]

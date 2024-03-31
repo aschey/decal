@@ -31,6 +31,10 @@ impl Stream for CpalStream {
         self.0.play().unwrap();
         Ok(())
     }
+
+    fn stop(&self) -> Result<(), PlayStreamError> {
+        Ok(())
+    }
 }
 
 impl Device for CpalDevice {

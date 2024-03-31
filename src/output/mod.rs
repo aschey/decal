@@ -54,6 +54,8 @@ pub struct BackendSpecificError(pub String);
 
 pub trait Stream {
     fn play(&self) -> Result<(), PlayStreamError>;
+
+    fn stop(&self) -> Result<(), PlayStreamError>;
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
@@ -162,14 +164,14 @@ impl SupportedStreamConfigRange {
     }
 }
 
-#[cfg(feature = "cpal")]
+#[cfg(feature = "output-cpal")]
 pub trait DecalSample:
     ::cpal::SizedSample + dasp::Sample + Send + Sync + Default + 'static
 {
     const FORMAT: SampleFormat;
 }
 
-#[cfg(feature = "cpal")]
+#[cfg(feature = "output-cpal")]
 impl<T> DecalSample for T
 where
     T: ::cpal::SizedSample + dasp::Sample + Send + Sync + Default + 'static,
@@ -189,10 +191,10 @@ where
     };
 }
 
-#[cfg(not(feature = "cpal"))]
+#[cfg(not(feature = "output-cpal"))]
 pub trait DecalSample: dasp::Sample + Send + Sync + Default {}
 
-#[cfg(not(feature = "cpal"))]
+#[cfg(not(feature = "output-cpal"))]
 impl<T> DecalSample for T where T: dasp::Sample + Send + Sync + Default {}
 
 pub trait Device {
@@ -541,6 +543,9 @@ impl<T: DecalSample + Default + 'static, B: AudioBackend> AudioOutput<T, B> {
     }
 
     pub fn stop(&mut self) {
+        if let Some(s) = self.stream.as_ref() {
+            s.stop().unwrap()
+        }
         self.stream = None;
     }
 

@@ -161,6 +161,9 @@ impl CubebDevice {
             });
         let stream = with_context(move |ctx| {
             let stream = builder.init(ctx).unwrap();
+            // On Windows, if we don't call start here and wait to call it when play() is invoked,
+            // cubeb throws an error. If we don't call start here and call stop() before
+            // calling start() later, the error doesn't happen. No idea why...
             stream.start().unwrap();
             stream
         });

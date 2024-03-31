@@ -217,7 +217,7 @@ pub trait Device {
     where
         T: DecalSample,
         D: FnMut(&mut [T]) + Send + Sync + 'static,
-        E: FnMut(StreamError) + Send + Sync + 'static;
+        E: FnMut(StreamError) + Clone + Send + Sync + 'static;
 }
 
 pub trait Host {

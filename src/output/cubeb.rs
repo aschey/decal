@@ -8,9 +8,9 @@ use cubeb::{
 use cubeb_core::DevicePref;
 
 use super::{
-    AudioBackend, BackendSpecificError, DecalSample, DefaultStreamConfigError, Device, Host,
-    SampleFormat, SampleRate, Stream, StreamConfig, StreamError, SupportedBufferSize,
-    SupportedStreamConfig, SupportedStreamConfigRange,
+    AudioBackend, DecalSample, DefaultStreamConfigError, Device, Host, SampleFormat, SampleRate,
+    Stream, StreamConfig, StreamError, SupportedBufferSize, SupportedStreamConfig,
+    SupportedStreamConfigRange,
 };
 
 thread_local! {
@@ -119,7 +119,7 @@ impl CubebDevice {
     where
         T: 'static,
         D: FnMut(&mut [T]) + Send + Sync + 'static,
-        E: FnMut(super::StreamError) + Send + Sync + 'static,
+        E: FnMut(StreamError) + Clone + Send + Sync + 'static,
     {
         let params = cubeb::StreamParamsBuilder::new()
             .channels(config.channels)
@@ -137,7 +137,8 @@ impl CubebDevice {
             .prefs(StreamPrefs::NONE)
             .take();
         let latency = with_context(|c| c.min_latency(&params).unwrap());
-
+        #[cfg(target_os = "macos")]
+        let mut error_callback_ = error_callback.clone();
         let mut builder = cubeb::StreamBuilder::<T>::new();
         builder
             .name("stream")
@@ -153,12 +154,15 @@ impl CubebDevice {
                     cubeb::State::Stopped => {}
                     cubeb::State::Drained => {}
                     cubeb::State::Error => {
-                        error_callback(StreamError::BackendSpecific(BackendSpecificError(
-                            "Stream disabled".to_string(),
-                        )));
+                        error_callback(StreamError::DeviceNotAvailable);
                     }
                 };
             });
+        // Device changed hook is only implemented on mac
+        #[cfg(target_os = "macos")]
+        builder.device_changed_cb(move || {
+            error_callback_(StreamError::DeviceNotAvailable);
+        });
         let stream = with_context(move |ctx| {
             let stream = builder.init(ctx).unwrap();
             // On Windows, if we don't call start here and wait to call it when play() is invoked,
@@ -200,7 +204,7 @@ impl Device for CubebDevice {
     where
         T: DecalSample,
         D: FnMut(&mut [T]) + Send + Sync + 'static,
-        E: FnMut(super::StreamError) + Send + Sync + 'static,
+        E: FnMut(super::StreamError) + Clone + Send + Sync + 'static,
     {
         let mut buf = vec![T::EQUILIBRIUM; 1024];
 

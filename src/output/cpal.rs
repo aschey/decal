@@ -1,10 +1,10 @@
 use cpal::traits::{DeviceTrait as _, HostTrait as _, StreamTrait as _};
 
 use super::{
-    AudioBackend, BufferSize, BuildStreamError, DecalSample, DefaultStreamConfigError, Device,
-    DeviceNameError, DevicesError, Host, PlayStreamError, SampleFormat, SampleRate, Stream,
-    StreamConfig, StreamError, SupportedBufferSize, SupportedStreamConfig,
-    SupportedStreamConfigRange, SupportedStreamConfigsError,
+    AudioBackend, BackendSpecificError, BufferSize, BuildStreamError, DecalSample,
+    DefaultStreamConfigError, Device, DeviceNameError, DevicesError, Host, PlayStreamError,
+    SampleFormat, SampleRate, Stream, StreamConfig, StreamError, SupportedBufferSize,
+    SupportedStreamConfig, SupportedStreamConfigRange, SupportedStreamConfigsError,
 };
 
 #[derive(Default, Clone)]
@@ -126,8 +126,15 @@ impl Device for CpalDevice {
                     move |data: &mut [T], _| {
                         data_callback(data);
                     },
-                    move |_stream_error| {
-                        error_callback(StreamError::DeviceNotAvailable);
+                    move |stream_error| {
+                        error_callback(match stream_error {
+                            cpal::StreamError::DeviceNotAvailable => {
+                                StreamError::DeviceNotAvailable
+                            }
+                            cpal::StreamError::BackendSpecific { err } => {
+                                StreamError::BackendSpecific(BackendSpecificError(err.to_string()))
+                            }
+                        });
                     },
                     None,
                 )

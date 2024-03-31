@@ -7,8 +7,9 @@ use cubeb::{
 use cubeb_core::DevicePref;
 
 use super::{
-    AudioBackend, DecalSample, DefaultStreamConfigError, Device, Host, SampleFormat, SampleRate,
-    Stream, StreamError, SupportedBufferSize, SupportedStreamConfig, SupportedStreamConfigRange,
+    AudioBackend, BackendSpecificError, DecalSample, DefaultStreamConfigError, Device, Host,
+    SampleFormat, SampleRate, Stream, StreamError, SupportedBufferSize, SupportedStreamConfig,
+    SupportedStreamConfigRange,
 };
 
 thread_local! {
@@ -20,7 +21,8 @@ where
     F: FnOnce(&Context) -> T,
 {
     CONTEXT.with(|c| {
-        let context = c.get_or_init(|| cubeb::init("context").unwrap());
+        let context =
+            c.get_or_init(|| cubeb::init("context").expect("failed to initialize context"));
         f(context)
     })
 }
@@ -40,12 +42,8 @@ impl CubebDevice {
         let name = device
             .friendly_name()
             .map(|n| n.to_string())
-            .unwrap_or_else(|| {
-                device
-                    .vendor_name()
-                    .map(|n| n.to_string())
-                    .unwrap_or_default()
-            });
+            .or_else(|| device.vendor_name().map(|n| n.to_string()))
+            .unwrap_or_else(|| "N/A".to_string());
 
         let mut configs = vec![];
         if device
@@ -136,11 +134,13 @@ impl Device for CubebDevice {
             .rate(config.sample_rate.0)
             .prefs(StreamPrefs::NONE)
             .take();
+        let latency = with_context(|c| c.min_latency(&params).unwrap());
+
         if config.channels > 1 {
             let mut builder = cubeb::StreamBuilder::<StereoFrame<T>>::new();
             builder
                 .name("stream")
-                .latency(1)
+                .latency(latency)
                 .output(self.device_id, &params)
                 .data_callback(move |_, output| {
                     let samples = output.len() * 2;
@@ -165,27 +165,19 @@ impl Device for CubebDevice {
                         cubeb::State::Stopped => {}
                         cubeb::State::Drained => {}
                         cubeb::State::Error => {
-                            error_callback(StreamError::DeviceNotAvailable);
+                            error_callback(StreamError::BackendSpecific(BackendSpecificError(
+                                "Stream disabled".to_string(),
+                            )));
                         }
                     };
                 });
-            let stream = with_context(move |ctx| {
-                let res = builder.init(ctx);
-                match res {
-                    Ok(stream) => Ok(stream),
-                    Err(e) => {
-                        println!("{:?}", e.code());
-                        Err(e)
-                    }
-                }
-            })
-            .unwrap();
+            let stream = with_context(move |ctx| builder.init(ctx).unwrap());
             Ok(Box::new(CubebStream { stream }))
         } else {
             let mut builder = cubeb::StreamBuilder::<MonoFrame<T>>::new();
             builder
                 .name("stream")
-                .latency(1)
+                .latency(latency)
                 .output(self.device_id, &params)
                 .data_callback(move |_, output| {
                     let samples = output.len() * 2;

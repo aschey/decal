@@ -36,7 +36,7 @@ pub enum BuildStreamError {}
 
 #[derive(thiserror::Error, Debug)]
 pub enum StreamError {
-    #[error("")]
+    #[error("Device not available")]
     DeviceNotAvailable,
     #[error("{0}")]
     BackendSpecific(BackendSpecificError),
@@ -49,7 +49,8 @@ pub enum DevicesError {}
 pub enum HostUnavailableError {}
 
 #[derive(thiserror::Error, Debug)]
-pub enum BackendSpecificError {}
+#[error("{0}")]
+pub struct BackendSpecificError(pub String);
 
 pub trait Stream {
     fn play(&self) -> Result<(), PlayStreamError>;

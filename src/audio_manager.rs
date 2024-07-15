@@ -8,7 +8,8 @@ use crate::decoder::{
     Source,
 };
 use crate::output::{
-    AudioBackend, AudioOutput, OutputBuilder, RequestedOutputConfig, WriteBlockingError,
+    AudioBackend, AudioOutput, AudioOutputError, OutputBuilder, RequestedOutputConfig,
+    WriteBlockingError,
 };
 
 #[derive(thiserror::Error, Debug)]
@@ -20,6 +21,16 @@ pub enum WriteOutputError {
         decoder_result: DecoderResult,
         error: WriteBlockingError,
     },
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum ResetError {
+    #[error(transparent)]
+    AudioOutputError(AudioOutputError),
+    #[error(transparent)]
+    WriteBlockingError(WriteBlockingError),
+    #[error(transparent)]
+    DecoderError(DecoderError),
 }
 
 pub struct AudioManager<T: Sample + DaspSample, B: AudioBackend> {
@@ -37,12 +48,14 @@ impl<
     B: AudioBackend,
 > AudioManager<T, B>
 {
-    pub fn new(output_builder: OutputBuilder<B>, resampler_settings: ResamplerSettings) -> Self {
-        let output_config = output_builder.default_output_config().unwrap();
+    pub fn new(
+        output_builder: OutputBuilder<B>,
+        resampler_settings: ResamplerSettings,
+    ) -> Result<Self, AudioOutputError> {
+        let output_config = output_builder.default_output_config()?;
 
-        let output: AudioOutput<T, B> = output_builder
-            .new_output::<T>(None, output_config.clone())
-            .unwrap();
+        let output: AudioOutput<T, B> =
+            output_builder.new_output::<T>(None, output_config.clone())?;
 
         let resampled = ResampledDecoder::<T>::new(
             output_config.sample_rate().0 as usize,
@@ -50,7 +63,7 @@ impl<
             resampler_settings.clone(),
         );
 
-        Self {
+        Ok(Self {
             output_config,
             output_builder,
             output,
@@ -58,7 +71,7 @@ impl<
             device_name: None,
             resampler_settings,
             volume: 1.0.to_sample(),
-        }
+        })
     }
 
     pub fn resampler_settings(&self) -> &ResamplerSettings {
@@ -81,14 +94,13 @@ impl<
         &self,
         source: Box<dyn Source>,
         decoder_settings: DecoderSettings,
-    ) -> Decoder<T> {
+    ) -> Result<Decoder<T>, DecoderError> {
         Decoder::<T>::new(
             source,
             self.volume,
             self.output_config.channels() as usize,
             decoder_settings,
         )
-        .unwrap()
     }
 
     pub fn initialize(&mut self, decoder: &mut Decoder<T>) -> Result<(), WriteBlockingError> {
@@ -101,8 +113,8 @@ impl<
         res
     }
 
-    pub fn reset(&mut self, decoder: &mut Decoder<T>) -> Result<(), WriteBlockingError> {
-        let res = self.flush();
+    pub fn reset(&mut self, decoder: &mut Decoder<T>) -> Result<(), ResetError> {
+        self.flush().map_err(ResetError::WriteBlockingError)?;
         self.output_config = self
             .output_builder
             .find_closest_config(
@@ -113,12 +125,12 @@ impl<
                     sample_format: Some(<T as cpal::SizedSample>::FORMAT),
                 },
             )
-            .unwrap();
+            .map_err(ResetError::AudioOutputError)?;
 
         self.output = self
             .output_builder
             .new_output(None, self.output_config.clone())
-            .unwrap();
+            .map_err(ResetError::AudioOutputError)?;
 
         self.resampled = ResampledDecoder::new(
             self.output_config.sample_rate().0 as usize,
@@ -131,13 +143,18 @@ impl<
         // Pre-fill output buffer before starting the stream
         while self.resampled.current(decoder).len() <= self.output.buffer_space_available() {
             self.output.write(self.resampled.current(decoder)).unwrap();
-            if self.resampled.decode_next_frame(decoder).unwrap() == DecoderResult::Finished {
+            if self
+                .resampled
+                .decode_next_frame(decoder)
+                .map_err(ResetError::DecoderError)?
+                == DecoderResult::Finished
+            {
                 break;
             }
         }
 
-        self.output.start().unwrap();
-        res
+        self.output.start().map_err(ResetError::AudioOutputError)?;
+        Ok(())
     }
 
     pub fn flush(&mut self) -> Result<(), WriteBlockingError> {

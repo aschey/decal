@@ -48,8 +48,9 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     ));
 
     tokio::task::spawn_blocking(move || {
-        let mut manager = AudioManager::<f32, _>::new(output_builder, ResamplerSettings::default());
-        let mut decoder = manager.init_decoder(source, DecoderSettings::default());
+        let mut manager =
+            AudioManager::<f32, _>::new(output_builder, ResamplerSettings::default())?;
+        let mut decoder = manager.init_decoder(source, DecoderSettings::default())?;
         manager.reset(&mut decoder)?;
         loop {
             if manager.write(&mut decoder)? == DecoderResult::Finished {

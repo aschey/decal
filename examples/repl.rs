@@ -161,7 +161,7 @@ fn event_loop<B: AudioBackend>(
     queue_rx: mpsc::Receiver<String>,
     command_rx: mpsc::Receiver<Command>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
-    let mut manager = AudioManager::<f32, _>::new(output_builder, ResamplerSettings::default());
+    let mut manager = AudioManager::<f32, _>::new(output_builder, ResamplerSettings::default())?;
 
     let mut reset: bool;
     let mut paused = false;
@@ -192,7 +192,7 @@ fn event_loop<B: AudioBackend>(
                 DecoderSettings {
                     enable_gapless: true,
                 },
-            );
+            )?;
             if let Some(seek_position) = seek_position.take() {
                 decoder.seek(seek_position).unwrap();
             }

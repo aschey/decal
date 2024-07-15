@@ -18,11 +18,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         || {},
         |err| error!("Output error: {err}"),
     );
-    let mut manager = AudioManager::<f32, _>::new(output_builder, ResamplerSettings::default());
+    let mut manager = AudioManager::<f32, _>::new(output_builder, ResamplerSettings::default())?;
 
     let source = Box::new(ReadSeekSource::from_path(Path::new("examples/music.mp3")));
 
-    let mut decoder = manager.init_decoder(source, DecoderSettings::default());
+    let mut decoder = manager.init_decoder(source, DecoderSettings::default())?;
 
     manager.reset(&mut decoder)?;
 

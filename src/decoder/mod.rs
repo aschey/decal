@@ -216,13 +216,19 @@ where
     }
 
     fn reader_seek(&mut self, time: Duration) -> Result<SeekedTo, symphonia::core::errors::Error> {
-        self.reader.seek(
+        let seek_time = Time::new(time.as_secs(), time.subsec_nanos() as f64 / NANOS_PER_SEC);
+        let res = self.reader.seek(
             SeekMode::Coarse,
             SeekTo::Time {
-                time: Time::new(time.as_secs(), time.subsec_nanos() as f64 / NANOS_PER_SEC),
+                time: seek_time,
                 track_id: Some(self.track_id),
             },
-        )
+        );
+        if res.is_ok() {
+            // Manually set the timestamp here in case it's queried before we decode the next packet
+            self.timestamp = self.time_base.calc_timestamp(seek_time);
+        }
+        res
     }
 
     fn initialize(&mut self) -> Result<(), DecoderError> {

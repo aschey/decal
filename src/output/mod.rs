@@ -105,6 +105,7 @@ pub enum WriteBlockingError {
     OutputStalled,
 }
 
+#[derive(Clone)]
 pub struct OutputBuilder<B: AudioBackend> {
     host: Arc<B::Host>,
     on_device_changed: Arc<Box<dyn Fn() + Send + Sync>>,

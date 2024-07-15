@@ -105,13 +105,24 @@ pub enum WriteBlockingError {
     OutputStalled,
 }
 
-#[derive(Clone)]
 pub struct OutputBuilder<B: AudioBackend> {
     host: Arc<B::Host>,
     on_device_changed: Arc<Box<dyn Fn() + Send + Sync>>,
     on_error: Arc<Box<dyn Fn(BackendSpecificError) + Send + Sync>>,
     current_device: Arc<RwLock<Option<String>>>,
     settings: OutputSettings,
+}
+
+impl<B: AudioBackend> Clone for OutputBuilder<B> {
+    fn clone(&self) -> Self {
+        Self {
+            host: self.host.clone(),
+            on_device_changed: self.on_device_changed.clone(),
+            on_error: self.on_error.clone(),
+            current_device: self.current_device.clone(),
+            settings: self.settings.clone(),
+        }
+    }
 }
 
 impl<B: AudioBackend> OutputBuilder<B> {

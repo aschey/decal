@@ -17,8 +17,8 @@ tracing = "0.1"
 
 [dev-dependencies]
 crossterm = "0.27.0"
-reedline = "0.30.0"
-stream-download = { version = "0.5.0", features = ["reqwest-rustls"] }
+reedline = "0.33.0"
+stream-download = { version = "0.6.0", features = ["reqwest-rustls"] }
 tokio = { version = "1.37.0", features = ["macros", "rt-multi-thread"] }
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 

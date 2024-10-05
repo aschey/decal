@@ -1,7 +1,7 @@
 use dasp::sample::Sample as DaspSample;
 use rubato::{FftFixedInOut, Resampler};
-use symphonia::core::conv::ConvertibleSample;
-use symphonia::core::sample::Sample;
+use symphonia::core::audio::conv::ConvertibleSample;
+use symphonia::core::audio::sample::Sample;
 
 use super::channel_buffer::ChannelBuffer;
 use super::vec_ext::VecExt;

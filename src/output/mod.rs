@@ -7,7 +7,7 @@ use cpal::{
     SampleRate, SizedSample, StreamConfig, StreamError, SupportedStreamConfig,
     SupportedStreamConfigRange, SupportedStreamConfigsError,
 };
-use rb::{RbConsumer, RbInspector, RbProducer, SpscRb, RB};
+use rb::{RB, RbConsumer, RbInspector, RbProducer, SpscRb};
 use thiserror::Error;
 use tracing::{info, warn};
 

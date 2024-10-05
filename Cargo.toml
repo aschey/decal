@@ -9,16 +9,16 @@ edition = "2021"
 cpal = { version = "0.15", optional = true }
 dasp = { version = "0.11", optional = true }
 rb = { version = "0.4", optional = true }
-rubato = { version = "0.15", optional = true }
-symphonia = { git = "https://github.com/pdeljanov/Symphonia", rev = "7e73f3572511f18f270695e649db433f560aa278", optional = true }
+rubato = { version = "0.16", optional = true }
+symphonia = { git = "https://github.com/pdeljanov/Symphonia", rev = "0c9f1f79e609e59a0847f7ff7d844251e3fd7984", optional = true }
 tap = "1"
 thiserror = "1"
 tracing = "0.1"
 
 [dev-dependencies]
-crossterm = "0.27.0"
-reedline = "0.33.0"
-stream-download = { version = "0.6.0", features = ["reqwest-rustls"] }
+crossterm = "0.28.1"
+reedline = "0.35.0"
+stream-download = { version = "0.9.0", features = ["reqwest-rustls"] }
 tokio = { version = "1.37.0", features = ["macros", "rt-multi-thread"] }
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 
@@ -33,14 +33,14 @@ decoder-wav = ["decoder", "symphonia/wav"]
 decoder-ogg = ["decoder", "symphonia/ogg"]
 decoder-vorbis = ["decoder", "symphonia/vorbis"]
 decoder-all = [
-    "decoder",
-    "decoder-aac",
-    "decoder-flac",
-    "decoder-mp3",
-    "decoder-isomp4",
-    "decoder-wav",
-    "decoder-ogg",
-    "decoder-vorbis",
+  "decoder",
+  "decoder-aac",
+  "decoder-flac",
+  "decoder-mp3",
+  "decoder-isomp4",
+  "decoder-wav",
+  "decoder-ogg",
+  "decoder-vorbis",
 ]
 asio = ["cpal/asio"]
 oboe-shared-stdcxx = ["cpal/oboe-shared-stdcxx"]

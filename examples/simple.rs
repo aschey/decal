@@ -1,9 +1,9 @@
 use std::error::Error;
 use std::path::Path;
 
+use decal::AudioManager;
 use decal::decoder::{DecoderResult, DecoderSettings, ReadSeekSource, ResamplerSettings};
 use decal::output::{CpalOutput, OutputBuilder, OutputSettings};
-use decal::AudioManager;
 use tracing::error;
 
 fn main() -> Result<(), Box<dyn Error>> {

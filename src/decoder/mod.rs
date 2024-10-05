@@ -1,15 +1,18 @@
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use dasp::sample::Sample as DaspSample;
-use symphonia::core::codecs::{Decoder as SymphoniaDecoder, DecoderOptions};
-use symphonia::core::conv::ConvertibleSample;
+use symphonia::core::audio::conv::ConvertibleSample;
+use symphonia::core::audio::sample::Sample;
+use symphonia::core::codecs::CodecParameters;
+use symphonia::core::codecs::audio::{AudioDecoder, AudioDecoderOptions};
 use symphonia::core::errors::Error;
 pub use symphonia::core::formats::SeekTo;
-use symphonia::core::formats::{FormatOptions, FormatReader, Packet, SeekMode, SeekedTo};
+use symphonia::core::formats::probe::Hint;
+use symphonia::core::formats::{
+    FormatOptions, FormatReader, Packet, SeekMode, SeekedTo, TrackType,
+};
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
-use symphonia::core::probe::Hint;
-use symphonia::core::sample::Sample;
 pub use symphonia::core::units::TimeStamp;
 use symphonia::core::units::{Time, TimeBase};
 use tap::TapFallible;
@@ -39,6 +42,8 @@ pub enum DecoderError {
     Recoverable(&'static str),
     #[error("The decoder needs to be reset before continuing")]
     ResetRequired,
+    #[error("Only audio tracks are supported")]
+    InvalidTrackType,
 }
 
 #[derive(Error, Debug)]
@@ -61,7 +66,7 @@ pub struct DecoderSettings {
 pub struct Decoder<T: Sample + dasp::sample::Sample> {
     buf: Vec<T>,
     sample_buf: Vec<T>,
-    decoder: Box<dyn SymphoniaDecoder>,
+    decoder: Box<dyn AudioDecoder>,
     reader: Box<dyn FormatReader>,
     time_base: TimeBase,
     buf_len: usize,
@@ -70,7 +75,7 @@ pub struct Decoder<T: Sample + dasp::sample::Sample> {
     input_channels: usize,
     output_channels: usize,
     timestamp: u64,
-    paused: bool,
+    is_paused: bool,
     sample_rate: usize,
     seek_required_ts: Option<u64>,
     settings: DecoderSettings,
@@ -104,24 +109,25 @@ where
                 Err(e) => return Err(DecoderError::FormatNotFound(e)),
             };
 
-        let track = match reader.default_track() {
+        let track = match reader.default_track(TrackType::Audio) {
             Some(track) => track.to_owned(),
             None => return Err(DecoderError::NoTracks),
         };
 
         // If no time base found, default to a dummy one
         // and attempt to calculate it from the sample rate later
-        let time_base = track
-            .codec_params
-            .time_base
-            .unwrap_or_else(|| TimeBase::new(1, 1));
+        let time_base = track.time_base.unwrap_or_else(|| TimeBase::new(1, 1));
 
-        let decode_opts = DecoderOptions { verify: true };
-        let symphonia_decoder =
-            match symphonia::default::get_codecs().make(&track.codec_params, &decode_opts) {
-                Ok(decoder) => decoder,
-                Err(e) => return Err(DecoderError::UnsupportedCodec(e)),
-            };
+        let decode_opts = AudioDecoderOptions { verify: true };
+        let Some(CodecParameters::Audio(codec_params)) = track.codec_params else {
+            return Err(DecoderError::InvalidTrackType);
+        };
+        let symphonia_decoder = match symphonia::default::get_codecs()
+            .make_audio_decoder(&codec_params, &decode_opts)
+        {
+            Ok(decoder) => decoder,
+            Err(e) => return Err(DecoderError::UnsupportedCodec(e)),
+        };
 
         let mut decoder = Self {
             decoder: symphonia_decoder,
@@ -135,7 +141,7 @@ where
             sample_buf: vec![],
             volume,
             timestamp: 0,
-            paused: false,
+            is_paused: false,
             sample_rate: 0,
             seek_required_ts: None,
             settings,
@@ -154,11 +160,15 @@ where
     }
 
     pub fn pause(&mut self) {
-        self.paused = true;
+        self.is_paused = true;
+    }
+
+    pub fn is_paused(&self) -> bool {
+        self.is_paused
     }
 
     pub fn resume(&mut self) {
-        self.paused = false;
+        self.is_paused = false;
     }
 
     pub fn sample_rate(&self) -> usize {
@@ -217,13 +227,10 @@ where
 
     fn reader_seek(&mut self, time: Duration) -> Result<SeekedTo, symphonia::core::errors::Error> {
         let seek_time = Time::new(time.as_secs(), time.subsec_nanos() as f64 / NANOS_PER_SEC);
-        let res = self.reader.seek(
-            SeekMode::Coarse,
-            SeekTo::Time {
-                time: seek_time,
-                track_id: Some(self.track_id),
-            },
-        );
+        let res = self.reader.seek(SeekMode::Coarse, SeekTo::Time {
+            time: seek_time,
+            track_id: Some(self.track_id),
+        });
         if res.is_ok() {
             // Manually set the timestamp here in case it's queried before we decode the next packet
             self.timestamp = self.time_base.calc_timestamp(seek_time);
@@ -360,7 +367,7 @@ where
     }
 
     pub(crate) fn next(&mut self) -> Result<Option<&[T]>, DecoderError> {
-        if self.paused {
+        if self.is_paused {
             self.buf.fill(T::MID);
         } else {
             loop {

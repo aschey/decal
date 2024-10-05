@@ -1,11 +1,11 @@
 use std::error::Error;
 
+use decal::AudioManager;
 use decal::decoder::{DecoderResult, DecoderSettings, ReadSeekSource, ResamplerSettings};
 use decal::output::{CpalOutput, OutputBuilder, OutputSettings};
-use decal::AudioManager;
-use stream_download::http::reqwest::Client;
 use stream_download::http::HttpStream;
-use stream_download::source::SourceStream;
+use stream_download::http::reqwest::Client;
+use stream_download::source::{DecodeError, SourceStream};
 use stream_download::storage::memory::MemoryStorageProvider;
 use stream_download::{Settings, StreamDownload};
 use tracing::metadata::LevelFilter;
@@ -37,9 +37,14 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
 
     info!("content length={:?}", stream.content_length());
     info!("content type={content_type:?}");
-
+    let stream =
+        match StreamDownload::from_stream(stream, MemoryStorageProvider, Settings::default()).await
+        {
+            Ok(stream) => stream,
+            Err(e) => return Err(e.decode_error().await.into()),
+        };
     let source = Box::new(ReadSeekSource::new(
-        StreamDownload::from_stream(stream, MemoryStorageProvider, Settings::default()).await?,
+        stream,
         None,
         content_type.map(|c| match c.subtype.as_str() {
             "mpeg" => "mp3".to_owned(),

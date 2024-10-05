@@ -1,7 +1,7 @@
 use cpal::{SampleRate, SizedSample, SupportedStreamConfig};
 use dasp::sample::Sample as DaspSample;
-use symphonia::core::conv::ConvertibleSample;
-use symphonia::core::sample::Sample;
+use symphonia::core::audio::conv::ConvertibleSample;
+use symphonia::core::audio::sample::Sample;
 
 use crate::decoder::{
     Decoder, DecoderError, DecoderResult, DecoderSettings, ResampledDecoder, ResamplerSettings,
@@ -117,14 +117,11 @@ impl<
         self.flush().map_err(ResetError::WriteBlockingError)?;
         self.output_config = self
             .output_builder
-            .find_closest_config(
-                self.device_name.as_deref(),
-                RequestedOutputConfig {
-                    sample_rate: Some(SampleRate(decoder.sample_rate() as u32)),
-                    channels: Some(self.output_config.channels()),
-                    sample_format: Some(<T as cpal::SizedSample>::FORMAT),
-                },
-            )
+            .find_closest_config(self.device_name.as_deref(), RequestedOutputConfig {
+                sample_rate: Some(SampleRate(decoder.sample_rate() as u32)),
+                channels: Some(self.output_config.channels()),
+                sample_format: Some(<T as cpal::SizedSample>::FORMAT),
+            })
             .map_err(ResetError::AudioOutputError)?;
 
         self.output = self

@@ -1,4 +1,4 @@
-use symphonia::core::sample::Sample;
+use symphonia::core::audio::sample::Sample;
 
 pub(crate) struct ChannelBuffer<T> {
     inner: Vec<Vec<T>>,

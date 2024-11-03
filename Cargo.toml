@@ -10,16 +10,16 @@ cpal = { version = "0.15", optional = true }
 dasp = { version = "0.11", optional = true }
 rb = { version = "0.4", optional = true }
 rubato = { version = "0.16", optional = true }
-symphonia = { git = "https://github.com/pdeljanov/Symphonia", rev = "0c9f1f79e609e59a0847f7ff7d844251e3fd7984", optional = true }
+symphonia = { git = "https://github.com/pdeljanov/Symphonia", rev = "1cb82d82626bcd180fc88886dbf2dbc5950e1d16", optional = true }
 tap = "1"
 thiserror = "1"
 tracing = "0.1"
 
 [dev-dependencies]
 crossterm = "0.28.1"
-reedline = "0.35.0"
+reedline = "0.36.0"
 stream-download = { version = "0.9.0", features = ["reqwest-rustls"] }
-tokio = { version = "1.37.0", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1.41.0", features = ["macros", "rt-multi-thread"] }
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 
 [features]

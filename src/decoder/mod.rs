@@ -104,7 +104,7 @@ where
         let metadata_opts = MetadataOptions::default();
 
         let reader =
-            match symphonia::default::get_probe().format(&hint, mss, format_opts, metadata_opts) {
+            match symphonia::default::get_probe().probe(&hint, mss, format_opts, metadata_opts) {
                 Ok(probed) => probed,
                 Err(e) => return Err(DecoderError::FormatNotFound(e)),
             };

@@ -71,7 +71,7 @@ impl<T: Sample + DaspSample + ConvertibleSample + rubato::Sample> ResampleDecode
 #[allow(clippy::large_enum_variant)]
 enum ResampledDecoderImpl<T: Sample + DaspSample> {
     Resampled(ResampleDecoderInner<T>),
-    NotResampled,
+    Native,
 }
 
 #[derive(Clone, Debug)]
@@ -96,7 +96,7 @@ pub struct ResampledDecoder<T: Sample + DaspSample> {
 impl<T: Sample + DaspSample + ConvertibleSample + rubato::Sample> ResampledDecoder<T> {
     pub fn new(out_sample_rate: usize, channels: usize, settings: ResamplerSettings) -> Self {
         Self {
-            decoder_inner: ResampledDecoderImpl::NotResampled,
+            decoder_inner: ResampledDecoderImpl::Native,
             in_sample_rate: out_sample_rate,
             out_sample_rate,
             channels,
@@ -108,7 +108,7 @@ impl<T: Sample + DaspSample + ConvertibleSample + rubato::Sample> ResampledDecod
         let current_in_rate = self.in_sample_rate;
         self.in_sample_rate = decoder.sample_rate();
         match &mut self.decoder_inner {
-            ResampledDecoderImpl::NotResampled => {
+            ResampledDecoderImpl::Native => {
                 self.initialize_resampler(decoder);
             }
             ResampledDecoderImpl::Resampled(inner) => {
@@ -117,7 +117,7 @@ impl<T: Sample + DaspSample + ConvertibleSample + rubato::Sample> ResampledDecod
                 {
                     inner.written = 0;
                 } else if self.in_sample_rate == self.out_sample_rate {
-                    self.decoder_inner = ResampledDecoderImpl::NotResampled;
+                    self.decoder_inner = ResampledDecoderImpl::Native;
                 } else {
                     self.initialize_resampler(decoder);
                 }
@@ -160,14 +160,14 @@ impl<T: Sample + DaspSample + ConvertibleSample + rubato::Sample> ResampledDecod
     pub fn current<'a>(&'a self, decoder: &'a Decoder<T>) -> &[T] {
         match &self.decoder_inner {
             ResampledDecoderImpl::Resampled(decoder_inner) => decoder_inner.current(),
-            ResampledDecoderImpl::NotResampled => decoder.current(),
+            ResampledDecoderImpl::Native => decoder.current(),
         }
     }
 
     pub fn flush(&mut self) -> &[T] {
         match &mut self.decoder_inner {
             ResampledDecoderImpl::Resampled(decoder) => decoder.flush(),
-            ResampledDecoderImpl::NotResampled => &[],
+            ResampledDecoderImpl::Native => &[],
         }
     }
 
@@ -177,7 +177,7 @@ impl<T: Sample + DaspSample + ConvertibleSample + rubato::Sample> ResampledDecod
     ) -> Result<DecoderResult, DecoderError> {
         match &mut self.decoder_inner {
             ResampledDecoderImpl::Resampled(decoder_inner) => decoder_inner.next(decoder),
-            ResampledDecoderImpl::NotResampled => Ok(match decoder.next()? {
+            ResampledDecoderImpl::Native => Ok(match decoder.next()? {
                 Some(_) => DecoderResult::Unfinished,
                 None => DecoderResult::Finished,
             }),

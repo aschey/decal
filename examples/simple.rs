@@ -2,7 +2,7 @@ use std::error::Error;
 use std::path::Path;
 
 use decal::AudioManager;
-use decal::decoder::{DecoderResult, DecoderSettings, ReadSeekSource, ResamplerSettings};
+use decal::decoder::{DecoderSettings, ReadSeekSource, ResamplerSettings};
 use decal::output::{CpalOutput, OutputBuilder, OutputSettings};
 use tracing::error;
 
@@ -25,11 +25,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut decoder = manager.init_decoder(source, DecoderSettings::default())?;
 
     manager.reset(&mut decoder)?;
-
-    loop {
-        if manager.write(&mut decoder)? == DecoderResult::Finished {
-            manager.flush()?;
-            return Ok(());
-        }
-    }
+    manager.write_all(&mut decoder)?;
+    Ok(())
 }

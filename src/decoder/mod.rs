@@ -48,7 +48,7 @@ pub enum DecoderError {
 
 #[derive(Error, Debug)]
 #[error("Error seeking: {0}")]
-pub struct SeekError(symphonia::core::errors::Error);
+pub struct SeekError(#[from] symphonia::core::errors::Error);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CurrentPosition {
@@ -203,7 +203,7 @@ where
 
         // Per the docs, decoders need to be reset after seeking
         self.decoder.reset();
-        seek_result.map_err(SeekError)
+        Ok(seek_result?)
     }
 
     pub fn current_position(&self) -> CurrentPosition {

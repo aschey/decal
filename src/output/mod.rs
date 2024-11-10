@@ -67,17 +67,17 @@ pub enum AudioOutputError {
     #[error("No default device found")]
     NoDefaultDevice,
     #[error("Error getting default device config: {0}")]
-    OutputDeviceConfigError(DefaultStreamConfigError),
+    OutputDeviceConfigError(#[from] DefaultStreamConfigError),
     #[error("Error opening output stream: {0}")]
-    OpenStreamError(BuildStreamError),
+    OpenStreamError(#[from] BuildStreamError),
     #[error("Error starting stream: {0}")]
-    StartStreamError(PlayStreamError),
+    StartStreamError(#[from] PlayStreamError),
     #[error("Unsupported device configuration: {0}")]
     UnsupportedConfiguration(String),
     #[error("Error loading devices: {0}")]
-    LoadDevicesError(DevicesError),
+    LoadDevicesError(#[from] DevicesError),
     #[error("Error loading config: {0}")]
-    LoadConfigsError(SupportedStreamConfigsError),
+    LoadConfigsError(#[from] SupportedStreamConfigsError),
 }
 
 pub struct RequestedOutputConfig {
@@ -203,7 +203,7 @@ impl<B: AudioBackend> OutputBuilder<B> {
                     .map(|d| d.name().unwrap_or_default())
                     .unwrap_or_default();
                 loop {
-                    if current_device.read().expect("lock poisioned").is_none() {
+                    if current_device.read().expect("lock poisoned").is_none() {
                         let default_device = host
                             .default_output_device()
                             .map(|d| d.name().unwrap_or_default())
@@ -229,9 +229,7 @@ impl<B: AudioBackend> OutputBuilder<B> {
             .host
             .default_output_device()
             .ok_or(AudioOutputError::NoDefaultDevice)?;
-        device
-            .default_output_config()
-            .map_err(AudioOutputError::OutputDeviceConfigError)
+        Ok(device.default_output_config()?)
     }
 
     pub fn find_closest_config(
@@ -246,8 +244,7 @@ impl<B: AudioBackend> OutputBuilder<B> {
         let device = match &device_name {
             Some(device_name) => self
                 .host
-                .output_devices()
-                .map_err(AudioOutputError::LoadDevicesError)?
+                .output_devices()?
                 .find(|d| {
                     d.name()
                         .map(|n| n.trim() == device_name.trim())
@@ -256,9 +253,7 @@ impl<B: AudioBackend> OutputBuilder<B> {
                 .unwrap_or(default_device),
             None => default_device,
         };
-        let default_config = device
-            .default_output_config()
-            .map_err(AudioOutputError::OutputDeviceConfigError)?;
+        let default_config = device.default_output_config()?;
 
         let channels = config.channels.unwrap_or(default_config.channels());
         let sample_rate = config.sample_rate.unwrap_or(default_config.sample_rate());
@@ -273,16 +268,12 @@ impl<B: AudioBackend> OutputBuilder<B> {
             return Ok(default_config);
         }
 
-        if let Some(matched_config) = device
-            .supported_output_configs()
-            .map_err(AudioOutputError::LoadConfigsError)?
-            .find(|c| {
-                c.channels() == channels
-                    && c.sample_format() == sample_format
-                    && c.min_sample_rate() <= sample_rate
-                    && c.max_sample_rate() >= sample_rate
-            })
-        {
+        if let Some(matched_config) = device.supported_output_configs()?.find(|c| {
+            c.channels() == channels
+                && c.sample_format() == sample_format
+                && c.min_sample_rate() <= sample_rate
+                && c.max_sample_rate() >= sample_rate
+        }) {
             return Ok(matched_config.with_sample_rate(sample_rate));
         }
 
@@ -311,8 +302,7 @@ impl<B: AudioBackend> OutputBuilder<B> {
         let device = match &device_name {
             Some(device_name) => self
                 .host
-                .output_devices()
-                .map_err(AudioOutputError::LoadDevicesError)?
+                .output_devices()?
                 .find(|d| {
                     d.name()
                         .map(|n| n.trim() == device_name.trim())
@@ -453,34 +443,31 @@ impl<T: SizedSample + Default + Send + 'static, B: AudioBackend> AudioOutput<T, 
         let filler = T::EQUILIBRIUM;
         let on_error = self.on_error.clone();
         let on_device_changed = self.on_device_changed.clone();
-        let stream = self
-            .device
-            .build_output_stream(
-                &config,
-                move |data: &mut [T]| {
-                    // Write out as many samples as possible from the ring buffer to the audio
-                    // output.
-                    let written = ring_buf_consumer.read(data).unwrap_or(0);
-                    // Mute any remaining samples.
-                    if data.len() > written {
-                        warn!("Output buffer not full, muting remaining",);
-                        data[written..].iter_mut().for_each(|s| *s = filler);
-                    }
-                },
-                move |err| match err {
-                    StreamError::DeviceNotAvailable => {
-                        info!("Device unplugged. Resetting...");
-                        on_device_changed();
-                    }
-                    StreamError::BackendSpecific { err } => {
-                        on_error(err);
-                    }
-                },
-            )
-            .map_err(AudioOutputError::OpenStreamError)?;
+        let stream = self.device.build_output_stream(
+            &config,
+            move |data: &mut [T]| {
+                // Write out as many samples as possible from the ring buffer to the audio
+                // output.
+                let written = ring_buf_consumer.read(data).unwrap_or(0);
+                // Mute any remaining samples.
+                if data.len() > written {
+                    warn!("Output buffer not full, muting remaining",);
+                    data[written..].iter_mut().for_each(|s| *s = filler);
+                }
+            },
+            move |err| match err {
+                StreamError::DeviceNotAvailable => {
+                    info!("Device unplugged. Resetting...");
+                    on_device_changed();
+                }
+                StreamError::BackendSpecific { err } => {
+                    on_error(err);
+                }
+            },
+        )?;
 
         // Start the output stream.
-        stream.play().map_err(AudioOutputError::StartStreamError)?;
+        stream.play()?;
 
         Ok(stream)
     }

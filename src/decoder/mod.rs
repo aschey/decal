@@ -240,13 +240,6 @@ where
 
     fn initialize(&mut self) -> Result<(), DecoderError> {
         let mut samples_skipped = 0;
-        let volume = self.volume;
-        if self.settings.enable_gapless {
-            // Edge case: if the volume is 0 then this will cause an issue because every sample will
-            // come back as silent Need to set the volume to 1 until we find the
-            // silence, then we can set it back
-            self.volume = T::IDENTITY;
-        }
 
         loop {
             self.next()?;
@@ -267,14 +260,11 @@ where
                 // Trim all the silent samples
                 let buf_no_silence: Vec<T> = self.buf[index..]
                     .iter()
-                    .map(|b| (*b).mul_amp(volume))
+                    .map(|b| (*b).mul_amp(self.volume))
                     .collect();
 
                 // Put the segment without silence at the beginning
                 self.buf[..self.buf_len].copy_from_slice(&buf_no_silence);
-
-                // Set the volume back to the original value
-                self.volume = volume;
                 info!("Skipped {samples_skipped} silent samples");
                 break;
             } else {

@@ -157,7 +157,7 @@ impl<T: Sample + DaspSample + ConvertibleSample + rubato::Sample> ResampledDecod
         self.out_sample_rate
     }
 
-    pub fn current<'a>(&'a self, decoder: &'a Decoder<T>) -> &[T] {
+    pub fn current<'a>(&'a self, decoder: &'a Decoder<T>) -> &'a [T] {
         match &self.decoder_inner {
             ResampledDecoderImpl::Resampled(decoder_inner) => decoder_inner.current(),
             ResampledDecoderImpl::Native => decoder.current(),

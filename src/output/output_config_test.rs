@@ -29,11 +29,14 @@ fn find_closest_config_default() {
         |_| {},
     );
     let config = output_builder
-        .find_closest_config(None, RequestedOutputConfig {
-            sample_rate: None,
-            channels: None,
-            sample_format: None,
-        })
+        .find_closest_config(
+            None,
+            RequestedOutputConfig {
+                sample_rate: None,
+                channels: None,
+                sample_format: None,
+            },
+        )
         .unwrap();
 
     assert_eq!(
@@ -70,11 +73,14 @@ fn find_closest_config_sample_rate() {
         |_| {},
     );
     let config = output_builder
-        .find_closest_config(None, RequestedOutputConfig {
-            sample_rate: Some(SampleRate(48000)),
-            channels: None,
-            sample_format: None,
-        })
+        .find_closest_config(
+            None,
+            RequestedOutputConfig {
+                sample_rate: Some(SampleRate(48000)),
+                channels: None,
+                sample_format: None,
+            },
+        )
         .unwrap();
 
     assert_eq!(
@@ -122,11 +128,14 @@ fn find_closest_config_channel_mismatch() {
         |_| {},
     );
     let config = output_builder
-        .find_closest_config(None, RequestedOutputConfig {
-            sample_rate: Some(SampleRate(48000)),
-            channels: Some(2),
-            sample_format: None,
-        })
+        .find_closest_config(
+            None,
+            RequestedOutputConfig {
+                sample_rate: Some(SampleRate(48000)),
+                channels: Some(2),
+                sample_format: None,
+            },
+        )
         .unwrap();
 
     assert_eq!(
@@ -174,11 +183,14 @@ fn find_closest_config_sample_rate_mismatch() {
         |_| {},
     );
     let config = output_builder
-        .find_closest_config(None, RequestedOutputConfig {
-            sample_rate: Some(SampleRate(48000)),
-            channels: Some(2),
-            sample_format: None,
-        })
+        .find_closest_config(
+            None,
+            RequestedOutputConfig {
+                sample_rate: Some(SampleRate(48000)),
+                channels: Some(2),
+                sample_format: None,
+            },
+        )
         .unwrap();
 
     assert_eq!(
@@ -226,11 +238,14 @@ fn find_closest_config_non_default_device() {
         |_| {},
     );
     let config = output_builder
-        .find_closest_config(Some("second-device"), RequestedOutputConfig {
-            sample_rate: None,
-            channels: None,
-            sample_format: None,
-        })
+        .find_closest_config(
+            Some("second-device"),
+            RequestedOutputConfig {
+                sample_rate: None,
+                channels: None,
+                sample_format: None,
+            },
+        )
         .unwrap();
 
     assert_eq!(

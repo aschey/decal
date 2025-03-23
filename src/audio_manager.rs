@@ -16,11 +16,8 @@ use crate::output::{
 pub enum WriteOutputError {
     #[error(transparent)]
     DecoderError(#[from] DecoderError),
-    #[error("{error:?}")]
-    WriteBlockingError {
-        decoder_result: DecoderResult,
-        error: WriteBlockingError,
-    },
+    #[error(transparent)]
+    WriteBlockingError(#[from] WriteBlockingError),
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -156,23 +153,16 @@ impl<
     }
 
     pub fn write(&mut self, decoder: &mut Decoder<T>) -> Result<DecoderResult, WriteOutputError> {
-        let write_result = self.output.write_blocking(self.resampled.current(decoder));
+        self.output
+            .write_blocking(self.resampled.current(decoder))?;
         let decoder_result = self.resampled.decode_next_frame(decoder)?;
-        write_result.map_err(|error| WriteOutputError::WriteBlockingError {
-            error,
-            decoder_result,
-        })?;
         Ok(decoder_result)
     }
 
     pub fn write_all(&mut self, decoder: &mut Decoder<T>) -> Result<(), WriteOutputError> {
         loop {
             if self.write(decoder)? == DecoderResult::Finished {
-                self.flush()
-                    .map_err(|error| WriteOutputError::WriteBlockingError {
-                        decoder_result: DecoderResult::Finished,
-                        error,
-                    })?;
+                self.flush()?;
                 return Ok(());
             }
         }

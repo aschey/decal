@@ -65,12 +65,14 @@ fn main() -> Result<(), Box<dyn Error>> {
             if !initialized {
                 initialized = true;
 
-                output_config =
-                    output_builder.find_closest_config(None, RequestedOutputConfig {
+                output_config = output_builder.find_closest_config(
+                    None,
+                    RequestedOutputConfig {
                         sample_rate: Some(SampleRate(decoder.sample_rate() as u32)),
                         channels: Some(output_config.channels()),
                         sample_format: Some(SampleFormat::F32),
-                    })?;
+                    },
+                )?;
 
                 output = output_builder.new_output(None, output_config.clone())?;
 

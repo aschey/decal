@@ -8,11 +8,11 @@ use crossterm::style::Stylize;
 use decal::decoder::{
     DecoderError, DecoderResult, DecoderSettings, ReadSeekSource, ResamplerSettings,
 };
-use decal::output::{AudioBackend, CpalOutput, OutputBuilder, OutputSettings};
+use decal::output::{AudioBackend, CpalOutput, OutputBuilder, OutputSettings, WriteBlockingError};
 use decal::{AudioManager, WriteOutputError};
 use reedline::{
-    default_emacs_keybindings, Color, ColumnarMenu, DefaultCompleter, DefaultPrompt, Emacs,
-    KeyCode, KeyModifiers, MenuBuilder, Reedline, ReedlineEvent, ReedlineMenu, Signal,
+    Color, ColumnarMenu, DefaultCompleter, DefaultPrompt, Emacs, KeyCode, KeyModifiers,
+    MenuBuilder, Reedline, ReedlineEvent, ReedlineMenu, Signal, default_emacs_keybindings,
 };
 use tracing::error;
 
@@ -161,7 +161,8 @@ fn event_loop<B: AudioBackend>(
     queue_rx: mpsc::Receiver<String>,
     command_rx: mpsc::Receiver<Command>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
-    let mut manager = AudioManager::<f32, _>::new(output_builder, ResamplerSettings::default());
+    let mut manager =
+        AudioManager::<f32, _>::new(output_builder.clone(), ResamplerSettings::default())?;
 
     let mut reset: bool;
     let mut paused = false;
@@ -185,14 +186,13 @@ fn event_loop<B: AudioBackend>(
             }
         };
         loop {
-            println!("{current_file}");
             let source = Box::new(ReadSeekSource::from_path(Path::new(&current_file)));
             let mut decoder = manager.init_decoder(
                 source,
                 DecoderSettings {
                     enable_gapless: true,
                 },
-            );
+            )?;
             if let Some(seek_position) = seek_position.take() {
                 decoder.seek(seek_position).unwrap();
             }
@@ -212,11 +212,9 @@ fn event_loop<B: AudioBackend>(
                     match command {
                         Command::Pause => {
                             decoder.pause();
-                            paused = true;
                         }
                         Command::Play => {
                             decoder.resume();
-                            paused = false;
                         }
                         Command::Next => {
                             break true;
@@ -239,16 +237,13 @@ fn event_loop<B: AudioBackend>(
                     }
                 }
                 match manager.write(&mut decoder) {
-                    Ok(DecoderResult::Finished)
-                    | Err(WriteOutputError::WriteBlockingError {
-                        decoder_result: DecoderResult::Finished,
-                        error: _,
-                    }) => break true,
-                    Ok(DecoderResult::Unfinished)
-                    | Err(WriteOutputError::WriteBlockingError {
-                        decoder_result: DecoderResult::Unfinished,
-                        error: _,
-                    }) => {}
+                    Ok(DecoderResult::Finished) => {
+                        break true;
+                    }
+                    Err(WriteOutputError::WriteBlockingError(
+                        WriteBlockingError::OutputStalled,
+                    )) => {}
+                    Ok(DecoderResult::Unfinished) => {}
                     Err(WriteOutputError::DecoderError(DecoderError::ResetRequired)) => {
                         break false;
                     }
@@ -261,6 +256,7 @@ fn event_loop<B: AudioBackend>(
             };
 
             if go_next {
+                paused = decoder.is_paused();
                 break;
             }
         }

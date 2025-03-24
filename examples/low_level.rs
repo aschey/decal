@@ -7,8 +7,8 @@ use decal::decoder::{
     ResamplerSettings,
 };
 use decal::output::{
-    AudioOutput, CpalOutput, CubebOutput, OutputBuilder, OutputSettings, RequestedOutputConfig,
-    SampleFormat, SampleRate,
+    AudioOutput, CpalOutput, OutputBuilder, OutputSettings, RequestedOutputConfig, SampleFormat,
+    SampleRate,
 };
 use tap::TapFallible;
 use tracing::error;
@@ -21,7 +21,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let (reset_tx, reset_rx) = std::sync::mpsc::sync_channel(32);
     let output_builder = OutputBuilder::new(
-        CubebOutput::default(),
+        CpalOutput::default(),
         OutputSettings::default(),
         move || {
             reset_tx

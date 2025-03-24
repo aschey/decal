@@ -1,33 +1,33 @@
 [package]
 name = "decal"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 cpal = { version = "0.15", optional = true }
-cubeb = { version = "0.12.0", optional = true }
-cubeb-core = { version = "0.12.0", optional = true }
+cubeb = { version = "0.26.0", optional = true }
+cubeb-core = { version = "0.26.0", optional = true }
 dasp = { version = "0.11", optional = true }
 rb = { version = "0.4", optional = true }
-rubato = { version = "0.15", optional = true }
-symphonia = { git = "https://github.com/pdeljanov/Symphonia", rev = "7e73f3572511f18f270695e649db433f560aa278", optional = true }
+rubato = { version = "0.16", optional = true }
+symphonia = { git = "https://github.com/pdeljanov/Symphonia", rev = "5c7078eefcf2587477d10c4345af2726f3528ecb", optional = true }
 tap = "1"
-thiserror = "1"
+thiserror = "2"
 tracing = "0.1"
 
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.52", features = [
-    "Win32_System_Com",
+  "Win32_System_Com",
 ], optional = true }
 
 [dev-dependencies]
-crossterm = "0.27.0"
-reedline = "0.30.0"
-stream-download = { version = "0.5.0", features = ["reqwest-rustls"] }
-tokio = { version = "1.37.0", features = ["macros", "rt-multi-thread"] }
+crossterm = "0.28.1"
+reedline = "0.39.0"
+stream-download = { version = "0.16.1", features = ["reqwest-rustls"] }
+tokio = { version = "1.41.0", features = ["macros", "rt-multi-thread"] }
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 
 [features]
@@ -43,17 +43,17 @@ decoder-wav = ["decoder", "symphonia/wav"]
 decoder-ogg = ["decoder", "symphonia/ogg"]
 decoder-vorbis = ["decoder", "symphonia/vorbis"]
 decoder-all = [
-    "decoder",
-    "decoder-aac",
-    "decoder-flac",
-    "decoder-mp3",
-    "decoder-isomp4",
-    "decoder-wav",
-    "decoder-ogg",
-    "decoder-vorbis",
+  "decoder",
+  "decoder-aac",
+  "decoder-flac",
+  "decoder-mp3",
+  "decoder-isomp4",
+  "decoder-wav",
+  "decoder-ogg",
+  "decoder-vorbis",
 ]
-asio = ["cpal/asio"]
-oboe-shared-stdcxx = ["cpal/oboe-shared-stdcxx"]
+cpal-asio = ["cpal/asio"]
+cpal-oboe-shared-stdcxx = ["cpal/oboe-shared-stdcxx"]
 cpal-jack = ["cpal/jack"]
 mock = []
 default = ["decoder-all", "output", "output-cpal", "output-cubeb", "mock"]

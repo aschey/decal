@@ -169,8 +169,4 @@ impl AudioBackend for MockOutput {
     fn default_host(&self) -> Self::Host {
         self.default_host.clone()
     }
-
-    // fn host_from_id(&self, _id: HostId) -> Result<Self::Host, HostUnavailableError> {
-    //     Ok(self.default_host.clone())
-    // }
 }

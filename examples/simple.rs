@@ -1,9 +1,9 @@
 use std::error::Error;
 use std::path::Path;
 
-use decal::decoder::{DecoderResult, DecoderSettings, ReadSeekSource, ResamplerSettings};
-use decal::output::{CpalOutput, CubebOutput, OutputBuilder, OutputSettings};
 use decal::AudioManager;
+use decal::decoder::{DecoderSettings, ReadSeekSource, ResamplerSettings};
+use decal::output::{CpalOutput, OutputBuilder, OutputSettings};
 use tracing::error;
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -13,23 +13,18 @@ fn main() -> Result<(), Box<dyn Error>> {
         .init();
 
     let output_builder = OutputBuilder::new(
-        CubebOutput::default(),
+        CpalOutput::default(),
         OutputSettings::default(),
         || {},
         |err| error!("Output error: {err}"),
     );
-    let mut manager = AudioManager::<f32, _>::new(output_builder, ResamplerSettings::default());
+    let mut manager = AudioManager::<f32, _>::new(output_builder, ResamplerSettings::default())?;
 
     let source = Box::new(ReadSeekSource::from_path(Path::new("examples/music.mp3")));
 
-    let mut decoder = manager.init_decoder(source, DecoderSettings::default());
+    let mut decoder = manager.init_decoder(source, DecoderSettings::default())?;
 
     manager.reset(&mut decoder)?;
-
-    loop {
-        if manager.write(&mut decoder)? == DecoderResult::Finished {
-            manager.flush()?;
-            return Ok(());
-        }
-    }
+    manager.write_all(&mut decoder)?;
+    Ok(())
 }

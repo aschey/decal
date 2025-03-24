@@ -1,7 +1,7 @@
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
-use rb::{RbConsumer, RbInspector, RbProducer, SpscRb, RB};
+use rb::{RB, RbConsumer, RbInspector, RbProducer, SpscRb};
 use thiserror::Error;
 use tracing::{info, warn};
 
@@ -240,17 +240,17 @@ pub enum AudioOutputError {
     #[error("No default device found")]
     NoDefaultDevice,
     #[error("Error getting default device config: {0}")]
-    OutputDeviceConfigError(DefaultStreamConfigError),
+    OutputDeviceConfigError(#[from] DefaultStreamConfigError),
     #[error("Error opening output stream: {0}")]
-    OpenStreamError(BuildStreamError),
+    OpenStreamError(#[from] BuildStreamError),
     #[error("Error starting stream: {0}")]
-    StartStreamError(PlayStreamError),
+    StartStreamError(#[from] PlayStreamError),
     #[error("Unsupported device configuration: {0}")]
     UnsupportedConfiguration(String),
     #[error("Error loading devices: {0}")]
-    LoadDevicesError(DevicesError),
+    LoadDevicesError(#[from] DevicesError),
     #[error("Error loading config: {0}")]
-    LoadConfigsError(SupportedStreamConfigsError),
+    LoadConfigsError(#[from] SupportedStreamConfigsError),
 }
 
 pub struct RequestedOutputConfig {
@@ -284,6 +284,18 @@ pub struct OutputBuilder<B: AudioBackend> {
     on_error: Arc<Box<dyn Fn(BackendSpecificError) + Send + Sync>>,
     current_device: Arc<RwLock<Option<String>>>,
     settings: OutputSettings,
+}
+
+impl<B: AudioBackend> Clone for OutputBuilder<B> {
+    fn clone(&self) -> Self {
+        Self {
+            host: self.host.clone(),
+            on_device_changed: self.on_device_changed.clone(),
+            on_error: self.on_error.clone(),
+            current_device: self.current_device.clone(),
+            settings: self.settings.clone(),
+        }
+    }
 }
 
 impl<B: AudioBackend> OutputBuilder<B> {
@@ -364,7 +376,7 @@ impl<B: AudioBackend> OutputBuilder<B> {
                     .map(|d| d.name().unwrap_or_default())
                     .unwrap_or_default();
                 loop {
-                    if current_device.read().expect("lock poisioned").is_none() {
+                    if current_device.read().expect("lock poisoned").is_none() {
                         let default_device = host
                             .default_output_device()
                             .map(|d| d.name().unwrap_or_default())
@@ -390,9 +402,7 @@ impl<B: AudioBackend> OutputBuilder<B> {
             .host
             .default_output_device()
             .ok_or(AudioOutputError::NoDefaultDevice)?;
-        device
-            .default_output_config()
-            .map_err(AudioOutputError::OutputDeviceConfigError)
+        Ok(device.default_output_config()?)
     }
 
     pub fn find_closest_config(
@@ -407,8 +417,7 @@ impl<B: AudioBackend> OutputBuilder<B> {
         let device = match &device_name {
             Some(device_name) => self
                 .host
-                .output_devices()
-                .map_err(AudioOutputError::LoadDevicesError)?
+                .output_devices()?
                 .find(|d| {
                     d.name()
                         .map(|n| n.trim() == device_name.trim())
@@ -417,9 +426,7 @@ impl<B: AudioBackend> OutputBuilder<B> {
                 .unwrap_or(default_device),
             None => default_device,
         };
-        let default_config = device
-            .default_output_config()
-            .map_err(AudioOutputError::OutputDeviceConfigError)?;
+        let default_config = device.default_output_config()?;
 
         let channels = config.channels.unwrap_or(default_config.channels);
         let sample_rate = config.sample_rate.unwrap_or(default_config.sample_rate);
@@ -470,8 +477,7 @@ impl<B: AudioBackend> OutputBuilder<B> {
         let device = match &device_name {
             Some(device_name) => self
                 .host
-                .output_devices()
-                .map_err(AudioOutputError::LoadDevicesError)?
+                .output_devices()?
                 .find(|d| {
                     d.name()
                         .map(|n| n.trim() == device_name.trim())
@@ -643,7 +649,7 @@ impl<T: DecalSample + Default + 'static, B: AudioBackend> AudioOutput<T, B> {
             .map_err(AudioOutputError::OpenStreamError)?;
 
         // Start the output stream.
-        stream.play().map_err(AudioOutputError::StartStreamError)?;
+        stream.play()?;
 
         Ok(stream)
     }

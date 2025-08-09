@@ -12,7 +12,7 @@ use symphonia::core::formats::{
     FormatOptions, FormatReader, Packet, SeekMode, SeekedTo, TrackType,
 };
 use symphonia::core::io::MediaSourceStream;
-use symphonia::core::meta::MetadataOptions;
+use symphonia::core::meta::{Metadata, MetadataOptions};
 pub use symphonia::core::units::TimeStamp;
 use symphonia::core::units::{Time, TimeBase};
 use tap::TapFallible;
@@ -149,6 +149,10 @@ where
         decoder.initialize()?;
 
         Ok(decoder)
+    }
+
+    pub fn metadata(&mut self) -> Metadata {
+        self.reader.metadata()
     }
 
     pub fn set_volume(&mut self, volume: T::Float) {

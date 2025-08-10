@@ -77,6 +77,7 @@ pub struct Decoder<T: Sample + dasp::sample::Sample> {
     timestamp: u64,
     is_paused: bool,
     sample_rate: usize,
+    num_frames: Option<u64>,
     seek_required_ts: Option<u64>,
     settings: DecoderSettings,
 }
@@ -113,6 +114,7 @@ where
             Some(track) => track.to_owned(),
             None => return Err(DecoderError::NoTracks),
         };
+        let num_frames = track.num_frames;
 
         // If no time base found, default to a dummy one
         // and attempt to calculate it from the sample rate later
@@ -144,6 +146,7 @@ where
             is_paused: false,
             sample_rate: 0,
             seek_required_ts: None,
+            num_frames,
             settings,
         };
         decoder.initialize()?;
@@ -153,6 +156,14 @@ where
 
     pub fn metadata(&mut self) -> Metadata {
         self.reader.metadata()
+    }
+
+    pub fn duration(&self) -> Option<Duration> {
+        let num_frames = self.num_frames?;
+        if self.time_base.denom == 1 {
+            return None;
+        }
+        Some(self.timestamp_to_duration(num_frames))
     }
 
     pub fn set_volume(&mut self, volume: T::Float) {
@@ -210,9 +221,13 @@ where
         Ok(seek_result?)
     }
 
-    pub fn current_position(&self) -> CurrentPosition {
-        let time = self.time_base.calc_time(self.timestamp);
+    fn timestamp_to_duration(&self, timestamp: u64) -> Duration {
+        let time = self.time_base.calc_time(timestamp);
         let millis = ((time.seconds as f64 + time.frac) * 1000.0) as u64;
+        Duration::from_millis(millis)
+    }
+
+    pub fn current_position(&self) -> CurrentPosition {
         let retrieval_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .tap_err(|e| {
@@ -224,7 +239,7 @@ where
             .ok();
 
         CurrentPosition {
-            position: Duration::from_millis(millis),
+            position: self.timestamp_to_duration(self.timestamp),
             retrieval_time,
         }
     }

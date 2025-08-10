@@ -154,7 +154,7 @@ where
         Ok(decoder)
     }
 
-    pub fn metadata(&mut self) -> Metadata {
+    pub fn metadata(&mut self) -> Metadata<'_> {
         self.reader.metadata()
     }
 

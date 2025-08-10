@@ -129,11 +129,11 @@ fn main() -> io::Result<()> {
                             .unwrap();
                     }
                     (_, Some(("volume", val))) => {
-                        if let Ok(volume) = val.parse::<f32>() {
-                            if (0.0..=100.0).contains(&volume) {
-                                command_tx.send(Command::Volume(volume / 100.0)).unwrap();
-                                continue;
-                            }
+                        if let Ok(volume) = val.parse::<f32>()
+                            && (0.0..=100.0).contains(&volume)
+                        {
+                            command_tx.send(Command::Volume(volume / 100.0)).unwrap();
+                            continue;
                         }
                         println!("Invalid volume: {val}");
                     }

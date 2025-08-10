@@ -28,7 +28,7 @@ windows-sys = { version = "0.60", features = [
 [dev-dependencies]
 crossterm = "0.28.1"
 reedline = "0.41.0"
-stream-download = { version = "0.22.0", features = ["reqwest-rustls"] }
+stream-download = { version = "0.22.2", features = ["reqwest-rustls"] }
 tokio = { version = "1.41.0", features = ["macros", "rt-multi-thread"] }
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 

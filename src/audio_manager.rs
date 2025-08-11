@@ -3,6 +3,7 @@ use std::time::Duration;
 use dasp::sample::Sample as DaspSample;
 use symphonia::core::audio::conv::ConvertibleSample;
 use symphonia::core::audio::sample::Sample;
+use symphonia::core::formats::SeekedTo;
 
 use crate::decoder::{
     Decoder, DecoderError, DecoderResult, DecoderSettings, ResampledDecoder, ResamplerSettings,
@@ -111,10 +112,14 @@ impl<T: Sample + DecalSample + ConvertibleSample + rubato::Sample + Send, B: Aud
         res
     }
 
-    pub fn seek(&mut self, decoder: &mut Decoder<T>, time: Duration) -> Result<(), ResetError> {
-        decoder.seek(time)?;
+    pub fn seek(
+        &mut self,
+        decoder: &mut Decoder<T>,
+        time: Duration,
+    ) -> Result<SeekedTo, ResetError> {
+        let seeked_to = decoder.seek(time)?;
         self.reset(decoder)?;
-        Ok(())
+        Ok(seeked_to)
     }
 
     pub fn reset(&mut self, decoder: &mut Decoder<T>) -> Result<(), ResetError> {

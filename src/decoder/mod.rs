@@ -58,9 +58,17 @@ pub struct CurrentPosition {
 
 const NANOS_PER_SEC: f64 = 1_000_000_000.0;
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct DecoderSettings {
     pub enable_gapless: bool,
+}
+
+impl Default for DecoderSettings {
+    fn default() -> Self {
+        Self {
+            enable_gapless: true,
+        }
+    }
 }
 
 pub struct Decoder<T: Sample + dasp::sample::Sample> {

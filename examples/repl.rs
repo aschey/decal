@@ -227,7 +227,7 @@ fn event_loop<B: AudioBackend>(
                             return Ok(());
                         }
                         Command::Seek(time) => {
-                            decoder.seek(time).unwrap();
+                            manager.seek(&mut decoder, time).unwrap();
                         }
                         Command::Reset => {
                             reset = true;

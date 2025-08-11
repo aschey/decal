@@ -1,10 +1,12 @@
+use std::time::Duration;
+
 use dasp::sample::Sample as DaspSample;
 use symphonia::core::audio::conv::ConvertibleSample;
 use symphonia::core::audio::sample::Sample;
 
 use crate::decoder::{
     Decoder, DecoderError, DecoderResult, DecoderSettings, ResampledDecoder, ResamplerSettings,
-    Source,
+    SeekError, Source,
 };
 use crate::output::{
     AudioBackend, AudioOutput, AudioOutputError, DecalSample, OutputBuilder, RequestedOutputConfig,
@@ -27,6 +29,8 @@ pub enum ResetError {
     WriteBlockingError(#[from] WriteBlockingError),
     #[error(transparent)]
     DecoderError(#[from] DecoderError),
+    #[error(transparent)]
+    SeekError(#[from] SeekError),
 }
 
 pub struct AudioManager<T: Sample + DaspSample, B: AudioBackend> {
@@ -105,6 +109,12 @@ impl<T: Sample + DecalSample + ConvertibleSample + rubato::Sample + Send, B: Aud
         };
         self.resampled.initialize(decoder);
         res
+    }
+
+    pub fn seek(&mut self, decoder: &mut Decoder<T>, time: Duration) -> Result<(), ResetError> {
+        decoder.seek(time)?;
+        self.reset(decoder)?;
+        Ok(())
     }
 
     pub fn reset(&mut self, decoder: &mut Decoder<T>) -> Result<(), ResetError> {

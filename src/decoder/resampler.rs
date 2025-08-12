@@ -105,27 +105,25 @@ impl<T: Sample + DaspSample + ConvertibleSample + rubato::Sample> ResampledDecod
     }
 
     pub fn initialize(&mut self, decoder: &mut Decoder<T>) {
-        let current_in_rate = self.in_sample_rate;
+        let sample_rate_changed = self.in_sample_rate != decoder.sample_rate();
         self.in_sample_rate = decoder.sample_rate();
         match &mut self.decoder_inner {
             ResampledDecoderImpl::Native => {
-                self.initialize_resampler(decoder);
+                if self.in_sample_rate != self.out_sample_rate {
+                    self.initialize_resampler();
+                }
             }
             ResampledDecoderImpl::Resampled(inner) => {
-                if self.in_sample_rate != self.out_sample_rate
-                    && self.in_sample_rate == current_in_rate
-                {
-                    inner.written = 0;
-                } else if self.in_sample_rate == self.out_sample_rate {
-                    self.decoder_inner = ResampledDecoderImpl::Native;
+                if sample_rate_changed {
+                    self.initialize_resampler();
                 } else {
-                    self.initialize_resampler(decoder);
+                    inner.written = 0;
                 }
             }
         }
     }
 
-    fn initialize_resampler(&mut self, decoder: &mut Decoder<T>) {
+    fn initialize_resampler(&mut self) {
         let resampler = FftFixedInOut::<T>::new(
             self.in_sample_rate,
             self.out_sample_rate,
@@ -146,7 +144,6 @@ impl<T: Sample + DaspSample + ConvertibleSample + rubato::Sample> ResampledDecod
             resampler,
         });
         self.decoder_inner = resampler;
-        self.decode_next_frame(decoder).unwrap();
     }
 
     pub fn in_sample_rate(&self) -> usize {

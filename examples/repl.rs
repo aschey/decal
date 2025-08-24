@@ -186,7 +186,7 @@ fn event_loop<B: AudioBackend>(
             }
         };
         loop {
-            let source = Box::new(ReadSeekSource::from_path(Path::new(&current_file)));
+            let source = Box::new(ReadSeekSource::from_path(Path::new(&current_file))?);
             let mut decoder = manager.init_decoder(
                 source,
                 DecoderSettings {

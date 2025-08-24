@@ -48,7 +48,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     for file_name in queue.into_iter() {
         loop {
-            let source = Box::new(ReadSeekSource::from_path(Path::new(file_name)));
+            let source = Box::new(ReadSeekSource::from_path(Path::new(file_name))?);
 
             let mut decoder = Decoder::<f32>::new(
                 source,

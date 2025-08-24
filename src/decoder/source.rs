@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 use std::fs::File;
-use std::io::{BufReader, Read, Result, Seek, SeekFrom};
+use std::io::{self, BufReader, Read, Result, Seek, SeekFrom};
 use std::path::Path;
 
 use symphonia::core::io::MediaSource;
@@ -9,7 +9,8 @@ use symphonia::core::io::MediaSource;
 pub struct ReadSeekSource<T: Read + Seek + Send> {
     inner: T,
     len: Option<u64>,
-    pub extension: Option<String>,
+    seekable: bool,
+    extension: Option<String>,
 }
 
 pub trait FileExt {
@@ -24,26 +25,32 @@ impl<T: Read + Seek + Send> ReadSeekSource<T> {
     pub fn new(inner: T, len: Option<u64>, extension: Option<String>) -> Self {
         ReadSeekSource {
             inner,
+            seekable: len.is_some(),
             len,
             extension,
         }
     }
+
+    pub fn seekable(mut self, seekable: bool) -> Self {
+        self.seekable = seekable;
+        self
+    }
 }
 
 impl ReadSeekSource<BufReader<File>> {
-    pub fn from_path(path: &Path) -> Self {
-        let file = File::open(path).unwrap();
+    pub fn from_path(path: &Path) -> io::Result<Self> {
+        let file = File::open(path)?;
         let file_len = file.metadata().ok().map(|m| m.len());
 
         let extension = path.extension().map(|e| e.to_string_lossy().to_string());
         let reader = BufReader::new(file);
-        Self::new(reader, file_len, extension)
+        Ok(Self::new(reader, file_len, extension))
     }
 }
 
 impl<T: Read + Seek + Send + Sync> MediaSource for ReadSeekSource<T> {
     fn is_seekable(&self) -> bool {
-        self.len.is_some()
+        self.seekable
     }
 
     fn byte_len(&self) -> Option<u64> {

@@ -1,3 +1,4 @@
+use std::sync::LazyLock;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use dasp::sample::Sample as DaspSample;
@@ -5,6 +6,7 @@ use symphonia::core::audio::conv::ConvertibleSample;
 use symphonia::core::audio::sample::Sample;
 use symphonia::core::codecs::CodecParameters;
 use symphonia::core::codecs::audio::{AudioDecoder, AudioDecoderOptions};
+use symphonia::core::codecs::registry::CodecRegistry;
 use symphonia::core::errors::Error;
 pub use symphonia::core::formats::SeekTo;
 use symphonia::core::formats::probe::Hint;
@@ -15,6 +17,7 @@ use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::{Metadata, MetadataOptions};
 pub use symphonia::core::units::TimeStamp;
 use symphonia::core::units::{Time, TimeBase};
+use symphonia::default::codecs;
 use tap::TapFallible;
 use thiserror::Error;
 use tracing::{error, info, warn};
@@ -70,6 +73,69 @@ impl Default for DecoderSettings {
         }
     }
 }
+
+static CODEC_REGISTRY: LazyLock<CodecRegistry> = LazyLock::new(|| {
+    let mut registry = CodecRegistry::new();
+
+    #[cfg(feature = "decoder-fdk-aac")]
+    registry.register_audio_decoder::<symphonia_adapter_fdk_aac::AacDecoder>();
+
+    #[cfg(all(
+        not(feature = "decoder-fdk-aac"),
+        any(
+            feature = "decoder-aac",
+            feature = "decoder-all",
+            feature = "decoder-all-codecs"
+        )
+    ))]
+    registry.register_audio_decoder::<codecs::AacDecoder>();
+
+    #[cfg(any(
+        feature = "decoder-adpcm",
+        feature = "decoder-all",
+        feature = "decoder-all-codecs"
+    ))]
+    registry.register_audio_decoder::<codecs::AdpcmDecoder>();
+
+    #[cfg(any(
+        feature = "decoder-alac",
+        feature = "decoder-all",
+        feature = "decoder-all-codecs"
+    ))]
+    registry.register_audio_decoder::<codecs::AlacDecoder>();
+
+    #[cfg(any(
+        feature = "decoder-flac",
+        feature = "decoder-all",
+        feature = "decoder-all-codecs"
+    ))]
+    registry.register_audio_decoder::<codecs::FlacDecoder>();
+
+    #[cfg(any(
+        feature = "decoder-mp1",
+        feature = "decoder-mp2",
+        feature = "decoder-mp3",
+        feature = "decoder-mpa",
+        feature = "decoder-all",
+        feature = "decoder-all-codecs"
+    ))]
+    registry.register_audio_decoder::<codecs::MpaDecoder>();
+
+    #[cfg(any(
+        feature = "decoder-pcm",
+        feature = "decoder-all",
+        feature = "decoder-all-codecs"
+    ))]
+    registry.register_audio_decoder::<codecs::PcmDecoder>();
+
+    #[cfg(any(
+        feature = "decoder-vorbis",
+        feature = "decoder-all",
+        feature = "decoder-all-codecs"
+    ))]
+    registry.register_audio_decoder::<codecs::VorbisDecoder>();
+    registry
+});
 
 pub struct Decoder<T: Sample + dasp::sample::Sample> {
     buf: Vec<T>,
@@ -132,8 +198,7 @@ where
         let Some(CodecParameters::Audio(codec_params)) = track.codec_params else {
             return Err(DecoderError::InvalidTrackType);
         };
-        let symphonia_decoder = match symphonia::default::get_codecs()
-            .make_audio_decoder(&codec_params, &decode_opts)
+        let symphonia_decoder = match CODEC_REGISTRY.make_audio_decoder(&codec_params, &decode_opts)
         {
             Ok(decoder) => decoder,
             Err(e) => return Err(DecoderError::UnsupportedCodec(e)),

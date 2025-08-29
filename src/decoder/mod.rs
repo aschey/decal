@@ -80,6 +80,9 @@ static CODEC_REGISTRY: LazyLock<CodecRegistry> = LazyLock::new(|| {
     #[cfg(feature = "decoder-fdk-aac")]
     registry.register_audio_decoder::<symphonia_adapter_fdk_aac::AacDecoder>();
 
+    #[cfg(feature = "symphonia-adapter-libopus")]
+    registry.register_audio_decoder::<symphonia_adapter_libopus::OpusDecoder>();
+
     #[cfg(all(
         not(feature = "decoder-fdk-aac"),
         any(

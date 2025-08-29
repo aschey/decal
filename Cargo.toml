@@ -15,7 +15,8 @@ dasp = { version = "0.11", optional = true }
 rb = { version = "0.4", optional = true }
 rubato = { version = "0.16", optional = true }
 symphonia = { git = "https://github.com/pdeljanov/Symphonia", rev = "39798f11d882b9fc959bf2d3c99eb7d6ac8b221a", optional = true }
-symphonia-adapter-fdk-aac = { git = "https://github.com/aschey/symphonia-adapters", rev = "c5ea9624db8d203c960095f71300f1dffec6b28e", optional = true }
+symphonia-adapter-fdk-aac = { git = "https://github.com/aschey/symphonia-adapters", rev = "f1c209403b91a5effbbcca8b57e69752e3e2b10c", optional = true }
+symphonia-adapter-libopus = { git = "https://github.com/aschey/symphonia-adapters", rev = "f1c209403b91a5effbbcca8b57e69752e3e2b10c", optional = true }
 tap = "1"
 thiserror = "2"
 tracing = "0.1"
@@ -40,6 +41,7 @@ output-cubeb = ["output", "cubeb", "cubeb-core", "windows-sys"]
 decoder = ["dep:symphonia", "dep:dasp", "dep:rubato"]
 decoder-aac = ["decoder", "symphonia/aac"]
 decoder-fdk-aac = ["decoder", "symphonia-adapter-fdk-aac"]
+decoder-libopus = ["decoder", "symphonia-adapter-libopus"]
 decoder-adpcm = ["decoder", "symphonia/adpcm"]
 decoder-alac = ["decoder", "symphonia/alac"]
 decoder-flac = ["decoder", "symphonia/flac"]

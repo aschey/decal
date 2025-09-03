@@ -7,7 +7,7 @@ use symphonia::core::formats::SeekedTo;
 
 use crate::decoder::{
     Decoder, DecoderError, DecoderResult, DecoderSettings, ResampledDecoder, ResamplerSettings,
-    SeekError, Source,
+    Source,
 };
 use crate::output::{
     AudioBackend, AudioOutput, AudioOutputError, DecalSample, OutputBuilder, RequestedOutputConfig,
@@ -30,8 +30,6 @@ pub enum ResetError {
     WriteBlockingError(#[from] WriteBlockingError),
     #[error(transparent)]
     DecoderError(#[from] DecoderError),
-    #[error(transparent)]
-    SeekError(#[from] SeekError),
 }
 
 pub struct AudioManager<T: Sample + DaspSample, B: AudioBackend> {

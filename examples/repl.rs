@@ -5,9 +5,7 @@ use std::sync::mpsc::{self, TryRecvError};
 use std::time::Duration;
 
 use crossterm::style::Stylize;
-use decal::decoder::{
-    DecoderError, DecoderResult, DecoderSettings, ReadSeekSource, ResamplerSettings,
-};
+use decal::decoder::{DecoderResult, DecoderSettings, ReadSeekSource, ResamplerSettings};
 use decal::output::{AudioBackend, CpalOutput, OutputBuilder, OutputSettings, WriteBlockingError};
 use decal::{AudioManager, WriteOutputError};
 use reedline::{
@@ -244,9 +242,6 @@ fn event_loop<B: AudioBackend>(
                         WriteBlockingError::OutputStalled,
                     )) => {}
                     Ok(DecoderResult::Unfinished) => {}
-                    Err(WriteOutputError::DecoderError(DecoderError::ResetRequired)) => {
-                        break false;
-                    }
                     Err(e) => {
                         Err(e)?;
                     }

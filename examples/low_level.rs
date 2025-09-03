@@ -3,8 +3,7 @@ use std::path::Path;
 use std::time::Duration;
 
 use decal::decoder::{
-    Decoder, DecoderError, DecoderResult, DecoderSettings, ReadSeekSource, ResampledDecoder,
-    ResamplerSettings,
+    Decoder, DecoderResult, DecoderSettings, ReadSeekSource, ResampledDecoder, ResamplerSettings,
 };
 use decal::output::{
     AudioOutput, CpalOutput, OutputBuilder, OutputSettings, RequestedOutputConfig, SampleFormat,
@@ -111,9 +110,6 @@ fn main() -> Result<(), Box<dyn Error>> {
                 match resampled.decode_next_frame(&mut decoder) {
                     Ok(DecoderResult::Finished) => break true,
                     Ok(DecoderResult::Unfinished) => {}
-                    Err(DecoderError::ResetRequired) => {
-                        break false;
-                    }
                     Err(e) => {
                         Err(e)?;
                     }

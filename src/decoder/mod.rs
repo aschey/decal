@@ -11,7 +11,7 @@ use symphonia::core::errors::Error;
 pub use symphonia::core::formats::SeekTo;
 use symphonia::core::formats::probe::Hint;
 use symphonia::core::formats::{
-    FormatOptions, FormatReader, Packet, SeekMode, SeekedTo, TrackType,
+    FormatOptions, FormatReader, Packet, SeekMode, SeekedTo, Track, TrackType,
 };
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::{Metadata, MetadataOptions};
@@ -43,15 +43,11 @@ pub enum DecoderError {
     DecodeError(symphonia::core::errors::Error),
     #[error("Recoverable error: {0}")]
     Recoverable(&'static str),
-    #[error("The decoder needs to be reset before continuing")]
-    ResetRequired,
+    #[error("Error seeking: {0}")]
+    Seek(symphonia::core::errors::Error),
     #[error("Only audio tracks are supported")]
     InvalidTrackType,
 }
-
-#[derive(Error, Debug)]
-#[error("Error seeking: {0}")]
-pub struct SeekError(#[from] symphonia::core::errors::Error);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CurrentPosition {
@@ -159,6 +155,25 @@ pub struct Decoder<T: Sample + dasp::sample::Sample> {
     settings: DecoderSettings,
 }
 
+fn create_decoder(
+    reader: &dyn FormatReader,
+) -> Result<(Box<dyn AudioDecoder>, Track), DecoderError> {
+    let track = match reader.default_track(TrackType::Audio) {
+        Some(track) => track.to_owned(),
+        None => return Err(DecoderError::NoTracks),
+    };
+
+    let decode_opts = AudioDecoderOptions { verify: true };
+    let Some(CodecParameters::Audio(codec_params)) = &track.codec_params else {
+        return Err(DecoderError::InvalidTrackType);
+    };
+    let symphonia_decoder = match CODEC_REGISTRY.make_audio_decoder(codec_params, &decode_opts) {
+        Ok(decoder) => decoder,
+        Err(e) => return Err(DecoderError::UnsupportedCodec(e)),
+    };
+    Ok((symphonia_decoder, track))
+}
+
 impl<T> Decoder<T>
 where
     T: Sample + dasp::sample::Sample + ConvertibleSample,
@@ -187,28 +202,15 @@ where
                 Err(e) => return Err(DecoderError::FormatNotFound(e)),
             };
 
-        let track = match reader.default_track(TrackType::Audio) {
-            Some(track) => track.to_owned(),
-            None => return Err(DecoderError::NoTracks),
-        };
+        let (decoder, track) = create_decoder(&*reader)?;
         let num_frames = track.num_frames;
 
         // If no time base found, default to a dummy one
         // and attempt to calculate it from the sample rate later
         let time_base = track.time_base.unwrap_or_else(|| TimeBase::new(1, 1));
 
-        let decode_opts = AudioDecoderOptions { verify: true };
-        let Some(CodecParameters::Audio(codec_params)) = track.codec_params else {
-            return Err(DecoderError::InvalidTrackType);
-        };
-        let symphonia_decoder = match CODEC_REGISTRY.make_audio_decoder(&codec_params, &decode_opts)
-        {
-            Ok(decoder) => decoder,
-            Err(e) => return Err(DecoderError::UnsupportedCodec(e)),
-        };
-
         let mut decoder = Self {
-            decoder: symphonia_decoder,
+            decoder,
             reader,
             time_base,
             buf_len: 0,
@@ -266,7 +268,7 @@ where
         self.sample_rate
     }
 
-    pub fn seek(&mut self, time: Duration) -> Result<SeekedTo, SeekError> {
+    pub fn seek(&mut self, time: Duration) -> Result<SeekedTo, DecoderError> {
         let position = self.current_position();
         let seek_result = match self.reader_seek(time) {
             Ok(result) => {
@@ -294,7 +296,7 @@ where
 
         // Per the docs, decoders need to be reset after seeking
         self.decoder.reset();
-        Ok(seek_result?)
+        seek_result
     }
 
     fn timestamp_to_duration(&self, timestamp: u64) -> Duration {
@@ -320,7 +322,7 @@ where
         }
     }
 
-    fn reader_seek(&mut self, time: Duration) -> Result<SeekedTo, symphonia::core::errors::Error> {
+    fn reader_seek(&mut self, time: Duration) -> Result<SeekedTo, DecoderError> {
         let seek_time = Time::new(time.as_secs(), time.subsec_nanos() as f64 / NANOS_PER_SEC);
         let res = self.reader.seek(
             SeekMode::Coarse,
@@ -329,11 +331,14 @@ where
                 track_id: Some(self.track_id),
             },
         );
+        if let Err(symphonia::core::errors::Error::ResetRequired) = res {
+            self.handle_reset()?;
+        }
         if res.is_ok() {
             // Manually set the timestamp here in case it's queried before we decode the next packet
             self.timestamp = self.time_base.calc_timestamp(seek_time);
         }
-        res
+        res.map_err(DecoderError::Seek)
     }
 
     fn initialize(&mut self) -> Result<(), DecoderError> {
@@ -380,6 +385,19 @@ where
         self.buf_len = samples_length;
     }
 
+    fn handle_reset(&mut self) -> Result<(), DecoderError> {
+        warn!("Decoder reset required");
+        let (decoder, track) = create_decoder(&*self.reader)?;
+        self.track_id = track.id;
+        self.num_frames = track.num_frames;
+        if let Some(time_base) = track.time_base {
+            self.time_base = time_base;
+        }
+        self.decoder = decoder;
+
+        Ok(())
+    }
+
     fn process_output(&mut self, packet: &Packet) -> Result<(), DecoderError> {
         let decoded = match self.decoder.decode(packet) {
             Ok(decoded) => decoded,
@@ -389,8 +407,8 @@ where
                 return Err(DecoderError::Recoverable(e));
             }
             Err(Error::ResetRequired) => {
-                warn!("Decoder reset required");
-                return Err(DecoderError::ResetRequired);
+                self.handle_reset()?;
+                return self.process_output(packet);
             }
             Err(e) => {
                 return Err(DecoderError::DecodeError(e));
@@ -477,8 +495,7 @@ where
                             return Ok(None);
                         }
                         Err(Error::ResetRequired) => {
-                            warn!("Decoder reset required");
-                            return Err(DecoderError::ResetRequired);
+                            self.handle_reset()?;
                         }
                         Err(e) => {
                             error!("Error reading next packet: {e:?}");

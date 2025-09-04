@@ -155,12 +155,24 @@ pub struct Decoder<T: Sample + dasp::sample::Sample> {
     settings: DecoderSettings,
 }
 
-fn default_track(reader: &dyn FormatReader) -> Result<Track, DecoderError> {
+fn create_decoder(
+    reader: &dyn FormatReader,
+) -> Result<(Box<dyn AudioDecoder>, Track), DecoderError> {
     let track = match reader.default_track(TrackType::Audio) {
         Some(track) => track.to_owned(),
         None => return Err(DecoderError::NoTracks),
     };
-    Ok(track)
+
+    let decode_opts = AudioDecoderOptions { verify: true };
+    let Some(CodecParameters::Audio(codec_params)) = &track.codec_params else {
+        return Err(DecoderError::InvalidTrackType);
+    };
+    let symphonia_decoder = match CODEC_REGISTRY.make_audio_decoder(codec_params, &decode_opts) {
+        Ok(decoder) => decoder,
+        Err(e) => return Err(DecoderError::UnsupportedCodec(e)),
+    };
+
+    Ok((symphonia_decoder, track))
 }
 
 impl<T> Decoder<T>
@@ -191,17 +203,7 @@ where
                 Err(e) => return Err(DecoderError::FormatNotFound(e)),
             };
 
-        let track = default_track(&*reader)?;
-        let decode_opts = AudioDecoderOptions { verify: true };
-        let Some(CodecParameters::Audio(codec_params)) = &track.codec_params else {
-            return Err(DecoderError::InvalidTrackType);
-        };
-
-        let decoder = match CODEC_REGISTRY.make_audio_decoder(codec_params, &decode_opts) {
-            Ok(decoder) => decoder,
-            Err(e) => return Err(DecoderError::UnsupportedCodec(e)),
-        };
-
+        let (decoder, track) = create_decoder(&*reader)?;
         let num_frames = track.num_frames;
 
         // If no time base found, default to a dummy one
@@ -330,9 +332,7 @@ where
                 track_id: Some(self.track_id),
             },
         );
-        if let Err(symphonia::core::errors::Error::ResetRequired) = res {
-            self.handle_reset()?;
-        }
+        self.decoder.reset();
         if res.is_ok() {
             // Manually set the timestamp here in case it's queried before we decode the next packet
             self.timestamp = self.time_base.calc_timestamp(seek_time);
@@ -386,13 +386,14 @@ where
 
     fn handle_reset(&mut self) -> Result<(), DecoderError> {
         warn!("Decoder reset required");
-        let track = default_track(&*self.reader)?;
+        let (decoder, track) = create_decoder(&*self.reader)?;
         self.track_id = track.id;
         self.num_frames = track.num_frames;
         if let Some(time_base) = track.time_base {
             self.time_base = time_base;
         }
-        self.decoder.reset();
+        self.decoder = decoder;
+
         Ok(())
     }
 
@@ -403,10 +404,6 @@ where
                 warn!("Invalid data found during decoding {e:?}. Skipping packet.");
                 // Decoder errors are recoverable, try the next packet
                 return Err(DecoderError::Recoverable(e));
-            }
-            Err(Error::ResetRequired) => {
-                self.handle_reset()?;
-                return self.process_output(packet);
             }
             Err(e) => {
                 return Err(DecoderError::DecodeError(e));

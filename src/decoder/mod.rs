@@ -155,23 +155,12 @@ pub struct Decoder<T: Sample + dasp::sample::Sample> {
     settings: DecoderSettings,
 }
 
-fn create_decoder(
-    reader: &dyn FormatReader,
-) -> Result<(Box<dyn AudioDecoder>, Track), DecoderError> {
+fn default_track(reader: &dyn FormatReader) -> Result<Track, DecoderError> {
     let track = match reader.default_track(TrackType::Audio) {
         Some(track) => track.to_owned(),
         None => return Err(DecoderError::NoTracks),
     };
-
-    let decode_opts = AudioDecoderOptions { verify: true };
-    let Some(CodecParameters::Audio(codec_params)) = &track.codec_params else {
-        return Err(DecoderError::InvalidTrackType);
-    };
-    let symphonia_decoder = match CODEC_REGISTRY.make_audio_decoder(codec_params, &decode_opts) {
-        Ok(decoder) => decoder,
-        Err(e) => return Err(DecoderError::UnsupportedCodec(e)),
-    };
-    Ok((symphonia_decoder, track))
+    Ok(track)
 }
 
 impl<T> Decoder<T>
@@ -202,7 +191,17 @@ where
                 Err(e) => return Err(DecoderError::FormatNotFound(e)),
             };
 
-        let (decoder, track) = create_decoder(&*reader)?;
+        let track = default_track(&*reader)?;
+        let decode_opts = AudioDecoderOptions { verify: true };
+        let Some(CodecParameters::Audio(codec_params)) = &track.codec_params else {
+            return Err(DecoderError::InvalidTrackType);
+        };
+
+        let decoder = match CODEC_REGISTRY.make_audio_decoder(codec_params, &decode_opts) {
+            Ok(decoder) => decoder,
+            Err(e) => return Err(DecoderError::UnsupportedCodec(e)),
+        };
+
         let num_frames = track.num_frames;
 
         // If no time base found, default to a dummy one
@@ -387,14 +386,13 @@ where
 
     fn handle_reset(&mut self) -> Result<(), DecoderError> {
         warn!("Decoder reset required");
-        let (decoder, track) = create_decoder(&*self.reader)?;
+        let track = default_track(&*self.reader)?;
         self.track_id = track.id;
         self.num_frames = track.num_frames;
         if let Some(time_base) = track.time_base {
             self.time_base = time_base;
         }
-        self.decoder = decoder;
-
+        self.decoder.reset();
         Ok(())
     }
 

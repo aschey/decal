@@ -20,7 +20,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     );
     let mut manager = AudioManager::<f32, _>::new(output_builder, ResamplerSettings::default())?;
 
-    let source = Box::new(ReadSeekSource::from_path(Path::new("examples/music.mp3"))?);
+    let source = Box::new(ReadSeekSource::from_path(Path::new(
+        "/home/aschey/code/platune/test.opus",
+    ))?);
 
     let mut decoder = manager.init_decoder(source, DecoderSettings::default())?;
 

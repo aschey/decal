@@ -27,8 +27,12 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         |err| error!("Output error: {err}"),
     );
 
-    let stream =
-        HttpStream::<Client>::create("http://68.34.83.26:8000/streamTV1.ogg".parse()?).await?;
+    let stream = HttpStream::<Client>::create(
+        "http://www.hyperion-records.co.uk/audiotest/14 Clementi Piano Sonata in D major, Op 25 \
+         No 6 - Movement 2 Un poco andante.MP3"
+            .parse()?,
+    )
+    .await?;
     let content_type = stream.content_type().clone();
 
     info!("content length={:?}", stream.content_length());

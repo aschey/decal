@@ -121,6 +121,8 @@ impl<T: Sample + DecalSample + ConvertibleSample + rubato::Sample + Send, B: Aud
     }
 
     pub fn reset(&mut self, decoder: &mut Decoder<T>) -> Result<(), ResetError> {
+        let current_sample_rate = self.output_config.sample_rate;
+        let current_channels = self.output_config.channels;
         self.flush()?;
         self.output_config = self.output_builder.find_closest_config(
             self.device_name.as_deref(),
@@ -134,14 +136,18 @@ impl<T: Sample + DecalSample + ConvertibleSample + rubato::Sample + Send, B: Aud
         self.output = self
             .output_builder
             .new_output(None, self.output_config.clone())?;
+        // Recreate decoder if the relevant output configuration changed
+        if current_sample_rate != self.output_config.sample_rate
+            || current_channels != self.output_config.channels
+        {
+            self.resampled = ResampledDecoder::new(
+                self.output_config.sample_rate.0 as usize,
+                self.output_config.channels as usize,
+                self.resampler_settings.clone(),
+            );
 
-        self.resampled = ResampledDecoder::new(
-            self.output_config.sample_rate.0 as usize,
-            self.output_config.channels as usize,
-            self.resampler_settings.clone(),
-        );
-
-        self.resampled.initialize(decoder);
+            self.resampled.initialize(decoder);
+        }
 
         // Pre-fill output buffer before starting the stream
         while self.resampled.current(decoder).len() <= self.output.buffer_space_available() {

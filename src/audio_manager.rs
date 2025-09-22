@@ -1,17 +1,19 @@
-use std::time::Duration;
+use std::thread;
 
 use dasp::sample::Sample as DaspSample;
 use symphonia::core::audio::conv::ConvertibleSample;
 use symphonia::core::audio::sample::Sample;
-use symphonia::core::formats::SeekedTo;
 
+use tracing::warn;
+
+use crate::DEFAULT_SAMPLE_RATE;
 use crate::decoder::{
     Decoder, DecoderError, DecoderResult, DecoderSettings, ResampledDecoder, ResamplerSettings,
     Source,
 };
 use crate::output::{
     AudioBackend, AudioOutput, AudioOutputError, DecalSample, OutputBuilder, RequestedOutputConfig,
-    SampleRate, SupportedStreamConfig, WriteBlockingError,
+    SupportedStreamConfig, WriteBlockingError,
 };
 
 #[derive(thiserror::Error, Debug)]
@@ -42,23 +44,40 @@ pub struct AudioManager<T: Sample + DaspSample, B: AudioBackend> {
     volume: T::Float,
 }
 
-impl<T: Sample + DecalSample + ConvertibleSample + rubato::Sample + Send, B: AudioBackend>
-    AudioManager<T, B>
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ResetMode {
+    Force,
+    Default,
+}
+
+impl<T, B> AudioManager<T, B>
+where
+    T: Sample + DecalSample + ConvertibleSample + rubato::Sample + Send,
+    B: AudioBackend,
 {
     pub fn new(
         output_builder: OutputBuilder<B>,
         resampler_settings: ResamplerSettings,
-    ) -> Result<Self, AudioOutputError> {
-        let output_config = output_builder.default_output_config()?;
+    ) -> Result<Self, ResetError> {
+        let default_output_config = output_builder.default_output_config()?;
+        let output_config = output_builder.find_closest_config(
+            None,
+            RequestedOutputConfig {
+                sample_rate: Some(DEFAULT_SAMPLE_RATE),
+                channels: Some(default_output_config.channels),
+                sample_format: Some(<T as DecalSample>::FORMAT),
+            },
+        )?;
 
         let output: AudioOutput<T, B> =
             output_builder.new_output::<T>(None, output_config.clone())?;
 
-        let resampled = ResampledDecoder::<T>::new(
-            output_config.sample_rate.0 as usize,
-            output_config.channels as usize,
+        let mut resampled = ResampledDecoder::<T>::new(
+            output_config.sample_rate,
+            output_config.channels,
             resampler_settings.clone(),
         );
+        resampled.initialize(DEFAULT_SAMPLE_RATE);
 
         Ok(Self {
             output_config,
@@ -88,66 +107,63 @@ impl<T: Sample + DecalSample + ConvertibleSample + rubato::Sample + Send, B: Aud
     }
 
     pub fn init_decoder(
-        &self,
+        &mut self,
         source: Box<dyn Source>,
         decoder_settings: DecoderSettings,
-    ) -> Result<Decoder<T>, DecoderError> {
-        Decoder::<T>::new(
+    ) -> Result<Decoder<T>, ResetError> {
+        let mut decoder = Decoder::<T>::new(
             source,
             self.volume,
-            self.output_config.channels as usize,
+            self.output_config.channels,
             decoder_settings,
-        )
+        )?;
+        self.reset(&mut decoder, ResetMode::Default)?;
+        Ok(decoder)
     }
 
-    pub fn initialize(&mut self, decoder: &mut Decoder<T>) -> Result<(), WriteBlockingError> {
-        let res = if decoder.sample_rate() != self.resampled.in_sample_rate() {
-            self.flush_output()
-        } else {
-            Ok(())
-        };
-        self.resampled.initialize(decoder);
-        res
-    }
-
-    pub fn seek(
-        &mut self,
-        decoder: &mut Decoder<T>,
-        time: Duration,
-    ) -> Result<SeekedTo, ResetError> {
-        let seeked_to = decoder.seek(time)?;
-        self.reset(decoder)?;
-        Ok(seeked_to)
-    }
-
-    pub fn reset(&mut self, decoder: &mut Decoder<T>) -> Result<(), ResetError> {
-        let current_sample_rate = self.output_config.sample_rate;
-        let current_channels = self.output_config.channels;
-        self.flush()?;
-        self.output_config = self.output_builder.find_closest_config(
+    pub fn reset(&mut self, decoder: &mut Decoder<T>, mode: ResetMode) -> Result<(), ResetError> {
+        let new_output_config = self.output_builder.find_closest_config(
             self.device_name.as_deref(),
             RequestedOutputConfig {
-                sample_rate: Some(SampleRate(decoder.sample_rate() as u32)),
+                sample_rate: Some(decoder.sample_rate()),
                 channels: Some(self.output_config.channels),
                 sample_format: Some(<T as DecalSample>::FORMAT),
             },
         )?;
 
-        self.output = self
-            .output_builder
-            .new_output(None, self.output_config.clone())?;
+        let force_reset = mode == ResetMode::Force;
+        let output_config_changed = new_output_config != self.output_config || force_reset;
+        let in_sample_rate_changed =
+            self.resampled.in_sample_rate() != decoder.sample_rate() || force_reset;
+        let resampler_config_changed = new_output_config.sample_rate
+            != self.output_config.sample_rate
+            || new_output_config.channels != self.output_config.channels
+            || force_reset;
+        self.output_config = new_output_config;
+
+        // No changes needed, just make sure the output is running
+        if !output_config_changed && !in_sample_rate_changed {
+            self.resampled.initialize(decoder.sample_rate());
+            self.output.start()?;
+            return Ok(());
+        }
+
+        if output_config_changed {
+            self.output = self
+                .output_builder
+                .new_output(self.device_name.clone(), self.output_config.clone())?;
+        }
+        self.flush()?;
+
         // Recreate decoder if the relevant output configuration changed
-        if current_sample_rate != self.output_config.sample_rate
-            || current_channels != self.output_config.channels
-        {
+        if resampler_config_changed {
             self.resampled = ResampledDecoder::new(
-                self.output_config.sample_rate.0 as usize,
-                self.output_config.channels as usize,
+                self.output_config.sample_rate,
+                self.output_config.channels,
                 self.resampler_settings.clone(),
             );
-
-            self.resampled.initialize(decoder);
         }
+        self.resampled.initialize(decoder.sample_rate());
 
         // Pre-fill output buffer before starting the stream
         while self.resampled.current(decoder).len() <= self.output.buffer_space_available() {
@@ -163,7 +179,9 @@ impl<T: Sample + DecalSample + ConvertibleSample + rubato::Sample + Send, B: Aud
 
     pub fn flush(&mut self) -> Result<(), WriteBlockingError> {
         let res = self.flush_output();
-        std::thread::sleep(self.output.settings().buffer_duration);
+        if res.is_ok() {
+            thread::sleep(self.output.settings().buffer_duration);
+        }
         self.output.stop();
         res
     }

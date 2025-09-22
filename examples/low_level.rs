@@ -7,7 +7,6 @@ use decal::decoder::{
 };
 use decal::output::{
     AudioOutput, CpalOutput, OutputBuilder, OutputSettings, RequestedOutputConfig, SampleFormat,
-    SampleRate,
 };
 use tap::TapFallible;
 use tracing::error;
@@ -37,8 +36,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let queue = vec!["examples/music-1.mp3", "examples/music-2.mp3"];
 
     let mut resampled = ResampledDecoder::new(
-        output_config.sample_rate.0 as usize,
-        output_config.channels as usize,
+        output_config.sample_rate,
+        output_config.channels,
         ResamplerSettings::default(),
     );
     let mut initialized = false;
@@ -52,7 +51,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             let mut decoder = Decoder::<f32>::new(
                 source,
                 1.0,
-                output_config.channels as usize,
+                output_config.channels,
                 DecoderSettings {
                     enable_gapless: true,
                 },
@@ -67,7 +66,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 output_config = output_builder.find_closest_config(
                     None,
                     RequestedOutputConfig {
-                        sample_rate: Some(SampleRate(decoder.sample_rate() as u32)),
+                        sample_rate: Some(decoder.sample_rate()),
                         channels: Some(output_config.channels),
                         sample_format: Some(SampleFormat::F32),
                     },
@@ -76,12 +75,12 @@ fn main() -> Result<(), Box<dyn Error>> {
                 output = output_builder.new_output(None, output_config.clone())?;
 
                 resampled = ResampledDecoder::new(
-                    output_config.sample_rate.0 as usize,
-                    output_config.channels as usize,
+                    output_config.sample_rate,
+                    output_config.channels,
                     ResamplerSettings::default(),
                 );
 
-                resampled.initialize(&mut decoder);
+                resampled.initialize(decoder.sample_rate());
 
                 // Pre-fill output buffer before starting the stream
                 while resampled.current(&decoder).len() <= output.buffer_space_available() {
@@ -96,7 +95,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 if decoder.sample_rate() != resampled.in_sample_rate() {
                     output.write_blocking(resampled.flush()).ok();
                 }
-                resampled.initialize(&mut decoder);
+                resampled.initialize(decoder.sample_rate());
             }
 
             let go_next = loop {

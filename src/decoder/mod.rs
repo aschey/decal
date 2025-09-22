@@ -27,6 +27,8 @@ pub use resampler::*;
 mod channel_buffer;
 mod source;
 pub use source::*;
+
+use crate::{ChannelCount, SampleRate};
 mod vec_ext;
 
 #[derive(Error, Debug)]
@@ -145,11 +147,11 @@ pub struct Decoder<T: Sample + dasp::sample::Sample> {
     buf_len: usize,
     volume: T::Float,
     track_id: u32,
-    input_channels: usize,
-    output_channels: usize,
+    input_channels: ChannelCount,
+    output_channels: ChannelCount,
     timestamp: u64,
     is_paused: bool,
-    sample_rate: usize,
+    sample_rate: SampleRate,
     num_frames: Option<u64>,
     seek_required_ts: Option<u64>,
     settings: DecoderSettings,
@@ -182,7 +184,7 @@ where
     pub fn new(
         source: Box<dyn Source>,
         volume: T::Float,
-        output_channels: usize,
+        output_channels: ChannelCount,
         settings: DecoderSettings,
     ) -> Result<Self, DecoderError> {
         let mut hint = Hint::new();
@@ -215,7 +217,7 @@ where
             reader,
             time_base,
             buf_len: 0,
-            input_channels: 0,
+            input_channels: ChannelCount(0),
             output_channels,
             track_id: track.id,
             buf: vec![],
@@ -223,7 +225,7 @@ where
             volume,
             timestamp: 0,
             is_paused: false,
-            sample_rate: 0,
+            sample_rate: SampleRate(0),
             seek_required_ts: None,
             num_frames,
             settings,
@@ -265,7 +267,7 @@ where
         self.is_paused = false;
     }
 
-    pub fn sample_rate(&self) -> usize {
+    pub fn sample_rate(&self) -> SampleRate {
         self.sample_rate
     }
 
@@ -346,7 +348,7 @@ where
         loop {
             self.next()?;
             if self.time_base.denom == 1 {
-                self.time_base = TimeBase::new(1, self.sample_rate as u32);
+                self.time_base = TimeBase::new(1, self.sample_rate.0);
             }
             if !self.settings.enable_gapless {
                 break;
@@ -354,7 +356,7 @@ where
             if let Some(mut index) = self.buf.iter().position(|s| *s != T::MID) {
                 // Edge case: if the first non-silent sample is on an odd-numbered index, we'll
                 // start on the wrong channel This only matters for stereo outputs
-                if self.output_channels == 2 && index % 2 == 1 {
+                if self.output_channels.0 == 2 && index % 2 == 1 {
                     index -= 1;
                 }
                 self.buf_len -= index;
@@ -410,15 +412,15 @@ where
             }
         };
 
-        if self.sample_rate == 0 {
+        if self.sample_rate.0 == 0 {
             let spec = decoded.spec();
-            let sample_rate = spec.rate() as usize;
+            let sample_rate = SampleRate(spec.rate());
             self.sample_rate = sample_rate;
             let channels = spec.channels().count();
-            self.input_channels = channels;
+            self.input_channels = ChannelCount(channels as u16);
 
             info!("Input channels = {channels}");
-            info!("Input sample rate = {sample_rate}");
+            info!("Input sample rate = {}", sample_rate.0);
 
             if channels > 2 {
                 return Err(DecoderError::UnsupportedFormat(
@@ -431,7 +433,7 @@ where
         self.sample_buf.resize(samples_len, T::MID);
         decoded.copy_to_slice_interleaved(&mut self.sample_buf);
 
-        match (self.input_channels, self.output_channels) {
+        match (self.input_channels.0, self.output_channels.0) {
             (1, 2) => {
                 self.adjust_buffer_size(samples_len * 2);
 

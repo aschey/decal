@@ -1,11 +1,11 @@
-use cpal::traits::{DeviceTrait as _, HostTrait as _, StreamTrait as _};
-
 use super::{
     AudioBackend, BackendSpecificError, BufferSize, BuildStreamError, DecalSample,
     DefaultStreamConfigError, Device, DeviceNameError, DevicesError, Host, PlayStreamError,
-    SampleFormat, SampleRate, Stream, StreamConfig, StreamError, SupportedBufferSize,
-    SupportedStreamConfig, SupportedStreamConfigRange, SupportedStreamConfigsError,
+    SampleFormat, Stream, StreamConfig, StreamError, SupportedBufferSize, SupportedStreamConfig,
+    SupportedStreamConfigRange, SupportedStreamConfigsError,
 };
+use crate::{ChannelCount, SampleRate};
+use cpal::traits::{DeviceTrait as _, HostTrait as _, StreamTrait as _};
 
 #[derive(Default, Clone)]
 pub struct CpalOutput {}
@@ -44,7 +44,7 @@ impl Device for CpalDevice {
         let config = self.0.default_output_config().unwrap();
 
         Ok(SupportedStreamConfig {
-            channels: config.channels() as u32,
+            channels: ChannelCount(config.channels()),
             sample_rate: SampleRate(config.sample_rate().0),
             buffer_size: match config.buffer_size() {
                 cpal::SupportedBufferSize::Range { min, max } => SupportedBufferSize::Range {
@@ -78,7 +78,7 @@ impl Device for CpalDevice {
     ) -> Result<Self::SupportedOutputConfigs, SupportedStreamConfigsError> {
         Ok(Box::new(self.0.supported_output_configs().unwrap().map(
             |c| SupportedStreamConfigRange {
-                channels: c.channels() as u32,
+                channels: ChannelCount(c.channels()),
                 min_sample_rate: SampleRate(c.max_sample_rate().0),
                 max_sample_rate: SampleRate(c.max_sample_rate().0),
                 buffer_size: match c.buffer_size() {
@@ -116,34 +116,43 @@ impl Device for CpalDevice {
         D: FnMut(&mut [T]) + Send + 'static,
         E: FnMut(StreamError) + Send + Sync + 'static,
     {
-        Ok(Box::new(CpalStream(
-            self.0
-                .build_output_stream(
-                    &cpal::StreamConfig {
-                        channels: config.channels as u16,
-                        sample_rate: cpal::SampleRate(config.sample_rate.0),
-                        buffer_size: match config.buffer_size {
-                            BufferSize::Fixed(val) => cpal::BufferSize::Fixed(val),
-                            BufferSize::Default => cpal::BufferSize::Default,
-                        },
+        let stream = self
+            .0
+            .build_output_stream(
+                &cpal::StreamConfig {
+                    channels: config.channels.0,
+                    sample_rate: cpal::SampleRate(config.sample_rate.0),
+                    buffer_size: match config.buffer_size {
+                        BufferSize::Fixed(val) => cpal::BufferSize::Fixed(val),
+                        BufferSize::Default => cpal::BufferSize::Default,
                     },
-                    move |data: &mut [T], _| {
-                        data_callback(data);
-                    },
-                    move |stream_error| {
-                        error_callback(match stream_error {
-                            cpal::StreamError::DeviceNotAvailable => {
-                                StreamError::DeviceNotAvailable
-                            }
-                            cpal::StreamError::BackendSpecific { err } => {
-                                StreamError::BackendSpecific(BackendSpecificError(err.to_string()))
-                            }
-                        });
-                    },
-                    None,
-                )
-                .unwrap(),
-        )))
+                },
+                move |data: &mut [T], _| {
+                    data_callback(data);
+                },
+                move |stream_error| {
+                    error_callback(match stream_error {
+                        cpal::StreamError::DeviceNotAvailable => StreamError::DeviceNotAvailable,
+                        cpal::StreamError::BackendSpecific { err } => {
+                            StreamError::BackendSpecific(BackendSpecificError(err.to_string()))
+                        }
+                    });
+                },
+                None,
+            )
+            .map_err(|e| match e {
+                cpal::BuildStreamError::DeviceNotAvailable => BuildStreamError::DeviceNotAvailable,
+                cpal::BuildStreamError::StreamConfigNotSupported => {
+                    BuildStreamError::StreamConfigNotSupported
+                }
+                cpal::BuildStreamError::InvalidArgument => BuildStreamError::InvalidArgument,
+                cpal::BuildStreamError::StreamIdOverflow => BuildStreamError::StreamIdOverflow,
+                cpal::BuildStreamError::BackendSpecific { err } => {
+                    BuildStreamError::BackendSpecific(BackendSpecificError(err.to_string()))
+                }
+            })?;
+
+        Ok(Box::new(CpalStream(stream)))
     }
 }
 

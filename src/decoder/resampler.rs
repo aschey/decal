@@ -3,6 +3,8 @@ use rubato::{FftFixedInOut, Resampler};
 use symphonia::core::audio::conv::ConvertibleSample;
 use symphonia::core::audio::sample::Sample;
 
+use crate::{ChannelCount, SampleRate};
+
 use super::channel_buffer::ChannelBuffer;
 use super::vec_ext::VecExt;
 use super::{Decoder, DecoderError};
@@ -87,14 +89,18 @@ impl Default for ResamplerSettings {
 
 pub struct ResampledDecoder<T: Sample + DaspSample> {
     decoder_inner: ResampledDecoderImpl<T>,
-    in_sample_rate: usize,
-    out_sample_rate: usize,
-    channels: usize,
+    in_sample_rate: SampleRate,
+    out_sample_rate: SampleRate,
+    channels: ChannelCount,
     settings: ResamplerSettings,
 }
 
 impl<T: Sample + DaspSample + ConvertibleSample + rubato::Sample> ResampledDecoder<T> {
-    pub fn new(out_sample_rate: usize, channels: usize, settings: ResamplerSettings) -> Self {
+    pub fn new(
+        out_sample_rate: SampleRate,
+        channels: ChannelCount,
+        settings: ResamplerSettings,
+    ) -> Self {
         Self {
             decoder_inner: ResampledDecoderImpl::Native,
             in_sample_rate: out_sample_rate,
@@ -104,9 +110,9 @@ impl<T: Sample + DaspSample + ConvertibleSample + rubato::Sample> ResampledDecod
         }
     }
 
-    pub fn initialize(&mut self, decoder: &mut Decoder<T>) {
-        let sample_rate_changed = self.in_sample_rate != decoder.sample_rate();
-        self.in_sample_rate = decoder.sample_rate();
+    pub fn initialize(&mut self, decoder_sample_rate: SampleRate) {
+        let sample_rate_changed = self.in_sample_rate != decoder_sample_rate;
+        self.in_sample_rate = decoder_sample_rate;
         match &mut self.decoder_inner {
             ResampledDecoderImpl::Native => {
                 if self.in_sample_rate != self.out_sample_rate {
@@ -125,10 +131,10 @@ impl<T: Sample + DaspSample + ConvertibleSample + rubato::Sample> ResampledDecod
 
     fn initialize_resampler(&mut self) {
         let resampler = FftFixedInOut::<T>::new(
-            self.in_sample_rate,
-            self.out_sample_rate,
+            self.in_sample_rate.0 as usize,
+            self.out_sample_rate.0 as usize,
             self.settings.chunk_size,
-            self.channels,
+            self.channels.0 as usize,
         )
         .expect("failed to create resampler");
 
@@ -139,18 +145,18 @@ impl<T: Sample + DaspSample + ConvertibleSample + rubato::Sample> ResampledDecod
         let resampler = ResampledDecoderImpl::Resampled(ResampleDecoderInner {
             written: 0,
             resampler_buf,
-            out_buf: Vec::with_capacity(n_frames * self.channels),
+            out_buf: Vec::with_capacity(n_frames * self.channels.0 as usize),
             in_buf: ChannelBuffer::new(in_buf),
             resampler,
         });
         self.decoder_inner = resampler;
     }
 
-    pub fn in_sample_rate(&self) -> usize {
+    pub fn in_sample_rate(&self) -> SampleRate {
         self.in_sample_rate
     }
 
-    pub fn out_sample_rate(&self) -> usize {
+    pub fn out_sample_rate(&self) -> SampleRate {
         self.out_sample_rate
     }
 

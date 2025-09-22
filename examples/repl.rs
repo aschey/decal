@@ -7,7 +7,7 @@ use std::time::Duration;
 use crossterm::style::Stylize;
 use decal::decoder::{DecoderResult, DecoderSettings, ReadSeekSource, ResamplerSettings};
 use decal::output::{AudioBackend, CpalOutput, OutputBuilder, OutputSettings, WriteBlockingError};
-use decal::{AudioManager, WriteOutputError};
+use decal::{AudioManager, ResetMode, WriteOutputError};
 use reedline::{
     Color, ColumnarMenu, DefaultCompleter, DefaultPrompt, Emacs, KeyCode, KeyModifiers,
     MenuBuilder, Reedline, ReedlineEvent, ReedlineMenu, Signal, default_emacs_keybindings,
@@ -200,9 +200,7 @@ fn event_loop<B: AudioBackend>(
 
             if reset {
                 reset = false;
-                manager.reset(&mut decoder).ok();
-            } else {
-                manager.initialize(&mut decoder).ok();
+                manager.reset(&mut decoder, ResetMode::Force).ok();
             }
 
             let go_next = loop {
@@ -225,7 +223,7 @@ fn event_loop<B: AudioBackend>(
                             return Ok(());
                         }
                         Command::Seek(time) => {
-                            manager.seek(&mut decoder, time).unwrap();
+                            decoder.seek(time).unwrap();
                         }
                         Command::Reset => {
                             reset = true;

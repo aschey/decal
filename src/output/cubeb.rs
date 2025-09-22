@@ -7,6 +7,8 @@ use cubeb::{
 };
 use cubeb_core::DevicePref;
 
+use crate::ChannelCount;
+
 use super::{
     AudioBackend, DecalSample, DefaultStreamConfigError, Device, Host, SampleFormat, SampleRate,
     Stream, StreamConfig, StreamError, SupportedBufferSize, SupportedStreamConfig,
@@ -72,7 +74,7 @@ impl CubebDevice {
             .intersects(DeviceFormat::F32BE | DeviceFormat::F32LE)
         {
             configs.push(SupportedStreamConfigRange {
-                channels: device.max_channels(),
+                channels: ChannelCount(device.max_channels() as u16),
                 min_sample_rate: SampleRate(device.min_rate()),
                 max_sample_rate: SampleRate(device.max_rate()),
                 buffer_size: SupportedBufferSize::Unknown,
@@ -85,7 +87,7 @@ impl CubebDevice {
             .intersects(DeviceFormat::S16BE | DeviceFormat::S16LE)
         {
             configs.push(SupportedStreamConfigRange {
-                channels: device.max_channels(),
+                channels: ChannelCount(device.max_channels() as u16),
                 min_sample_rate: SampleRate(device.min_rate()),
                 max_sample_rate: SampleRate(device.max_rate()),
                 buffer_size: SupportedBufferSize::Unknown,
@@ -95,7 +97,7 @@ impl CubebDevice {
 
         Self {
             default_output_config: SupportedStreamConfig {
-                channels: device.max_channels(),
+                channels: ChannelCount(device.max_channels() as u16),
                 sample_rate: SampleRate(device.default_rate()),
                 buffer_size: SupportedBufferSize::Unknown,
                 sample_format: match default_format {
@@ -122,13 +124,13 @@ impl CubebDevice {
         E: FnMut(StreamError) + Clone + Send + Sync + 'static,
     {
         let params = cubeb::StreamParamsBuilder::new()
-            .channels(config.channels)
+            .channels(config.channels.0 as u32)
             .format(match <S as DecalSample>::FORMAT {
                 SampleFormat::I32 => cubeb::SampleFormat::S16NE,
                 SampleFormat::F32 => cubeb::SampleFormat::Float32NE,
                 _ => unimplemented!(),
             })
-            .layout(if config.channels > 1 {
+            .layout(if config.channels.0 > 1 {
                 ChannelLayout::STEREO
             } else {
                 ChannelLayout::MONO
@@ -208,7 +210,7 @@ impl Device for CubebDevice {
     {
         let mut buf = vec![T::EQUILIBRIUM; 1024];
 
-        if config.channels > 1 {
+        if config.channels.0 > 1 {
             Ok(self.get_stream::<T, _, _, _>(
                 config,
                 move |output| {

@@ -22,7 +22,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     let source = Box::new(ReadSeekSource::from_path(Path::new("examples/music.mp3"))?);
     let mut decoder = manager.init_decoder(source, DecoderSettings::default())?;
 
-    manager.reset(&mut decoder)?;
     manager.write_all(&mut decoder)?;
     Ok(())
 }

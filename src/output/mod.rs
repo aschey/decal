@@ -1,7 +1,7 @@
+use crate::{ChannelCount, SampleRate};
+use rb::{RB, RbConsumer, RbInspector, RbProducer, SpscRb};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
-
-use rb::{RB, RbConsumer, RbInspector, RbProducer, SpscRb};
 use thiserror::Error;
 use tracing::{info, warn};
 
@@ -32,7 +32,20 @@ pub enum SupportedStreamConfigsError {}
 pub enum DefaultStreamConfigError {}
 
 #[derive(thiserror::Error, Debug)]
-pub enum BuildStreamError {}
+pub enum BuildStreamError {
+    #[error(
+        "The device no longer exists. This can happen if the device is disconnected while the program is running."
+    )]
+    DeviceNotAvailable,
+    #[error("The specified stream configuration is not supported.")]
+    StreamConfigNotSupported,
+    #[error("Called something the device didn't understand")]
+    InvalidArgument,
+    #[error("Occurs if adding a new Stream ID would cause an integer overflow.")]
+    StreamIdOverflow,
+    #[error("{0}")]
+    BackendSpecific(BackendSpecificError),
+}
 
 #[derive(thiserror::Error, Debug)]
 pub enum StreamError {
@@ -113,9 +126,6 @@ pub enum SupportedBufferSize {
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Copy)]
-pub struct SampleRate(pub u32);
-
-#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Copy)]
 pub struct HostId(u32);
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Copy)]
@@ -123,8 +133,6 @@ pub enum BufferSize {
     Default,
     Fixed(u32),
 }
-
-pub type ChannelCount = u32;
 
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub struct SupportedStreamConfig {
@@ -370,6 +378,8 @@ impl<B: AudioBackend> OutputBuilder<B> {
             let host = builder.host.clone();
             let on_device_changed = builder.on_device_changed.clone();
 
+            // On Windows, changes to the default device aren't picked up automatically
+            // We have to poll the current device and force a restart.
             std::thread::spawn(move || {
                 let mut current_default_device = host
                     .default_output_device()
@@ -521,7 +531,7 @@ impl<T: DecalSample + Default + 'static, B: AudioBackend> AudioOutput<T, B> {
         let buffer_duration = Duration::from_millis(200);
         let buffer_ms: usize = buffer_duration.as_millis().try_into().unwrap();
         let ring_buf = SpscRb::<T>::new(
-            ((buffer_ms * config.sample_rate.0 as usize) / 1000) * config.channels as usize,
+            ((buffer_ms * config.sample_rate.0 as usize) / 1000) * config.channels.0 as usize,
         );
 
         Self {
@@ -616,7 +626,7 @@ impl<T: DecalSample + Default + 'static, B: AudioBackend> AudioOutput<T, B> {
             buffer_size: BufferSize::Default,
         };
 
-        info!("Output channels = {channels}");
+        info!("Output channels = {}", channels.0);
         info!("Output sample rate = {}", self.config.sample_rate.0);
 
         let filler = T::EQUILIBRIUM;

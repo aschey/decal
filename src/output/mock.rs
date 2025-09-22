@@ -3,13 +3,13 @@ use std::sync::mpsc::{self};
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 
-use dasp::Sample;
-
 use super::{
     AudioBackend, BuildStreamError, DecalSample, DefaultStreamConfigError, Device, DeviceNameError,
-    DevicesError, Host, PlayStreamError, SampleRate, Stream, StreamConfig, StreamError,
-    SupportedStreamConfig, SupportedStreamConfigRange, SupportedStreamConfigsError,
+    DevicesError, Host, PlayStreamError, Stream, StreamConfig, StreamError, SupportedStreamConfig,
+    SupportedStreamConfigRange, SupportedStreamConfigsError,
 };
+use crate::SampleRate;
+use dasp::Sample;
 
 pub struct MockStream {
     started: Arc<AtomicBool>,

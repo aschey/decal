@@ -24,7 +24,6 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let mut decoder = manager.init_decoder(source, DecoderSettings::default())?;
 
-    manager.reset(&mut decoder)?;
     manager.write_all(&mut decoder)?;
     Ok(())
 }

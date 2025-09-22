@@ -4,8 +4,6 @@ use dasp::sample::Sample as DaspSample;
 use symphonia::core::audio::conv::ConvertibleSample;
 use symphonia::core::audio::sample::Sample;
 
-use tracing::warn;
-
 use crate::DEFAULT_SAMPLE_RATE;
 use crate::decoder::{
     Decoder, DecoderError, DecoderResult, DecoderSettings, ResampledDecoder, ResamplerSettings,

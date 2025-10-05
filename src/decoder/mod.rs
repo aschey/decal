@@ -239,6 +239,10 @@ where
         self.reader.metadata()
     }
 
+    pub fn track_id(&self) -> u32 {
+        self.track_id
+    }
+
     pub fn duration(&self) -> Option<Duration> {
         let num_frames = self.num_frames?;
         if self.time_base.denom == 1 {

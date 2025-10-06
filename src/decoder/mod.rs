@@ -357,9 +357,10 @@ where
             if !self.settings.enable_gapless {
                 break;
             }
-            if let Some(mut index) = self.buf.iter().position(|s| *s != T::MID) {
+            if let Some(mut index) = self.current().iter().position(|s| *s != T::MID) {
                 // Edge case: if the first non-silent sample is on an odd-numbered index, we'll
-                // start on the wrong channel This only matters for stereo outputs
+                // start on the wrong channel.
+                // This only matters for stereo outputs.
                 if self.output_channels.0 == 2 && index % 2 == 1 {
                     index -= 1;
                 }
@@ -372,11 +373,11 @@ where
                     .collect();
 
                 // Put the segment without silence at the beginning
-                self.buf[..self.buf_len].copy_from_slice(&buf_no_silence);
+                self.buf[..buf_no_silence.len()].copy_from_slice(&buf_no_silence);
                 info!("Skipped {samples_skipped} silent samples");
                 break;
             } else {
-                samples_skipped += self.buf.len();
+                samples_skipped += self.buf_len;
             }
         }
         Ok(())
@@ -399,6 +400,7 @@ where
             self.time_base = time_base;
         }
         self.decoder = decoder;
+        self.initialize()?;
 
         Ok(())
     }
@@ -497,6 +499,7 @@ where
                         }
                         Err(Error::ResetRequired) => {
                             self.handle_reset()?;
+                            return Ok(Some(self.current()));
                         }
                         Err(e) => {
                             error!("Error reading next packet: {e:?}");
@@ -507,7 +510,8 @@ where
                 self.timestamp = packet.ts();
                 match self.process_output(&packet) {
                     Ok(()) => break,
-                    Err(DecoderError::Recoverable(_)) => {
+                    Err(DecoderError::Recoverable(e)) => {
+                        warn!("decoder error: {e}");
                         // Just read the next packet on a recoverable error
                     }
                     Err(e) => {

@@ -14,9 +14,9 @@ cubeb-core = { version = "0.31.2", optional = true }
 dasp = { version = "0.11", optional = true }
 rb = { version = "0.4", optional = true }
 rubato = { version = "0.16", optional = true }
-symphonia = { git = "https://github.com/pdeljanov/Symphonia", rev = "e8e986fddbd6966bf4ec2aa0bf2bcbfbfa109454", optional = true }
-symphonia-adapter-fdk-aac = { git = "https://github.com/aschey/symphonia-adapters", rev = "cc1a7beac9779f8c94be7585107bccf0908b0c48", optional = true }
-symphonia-adapter-libopus = { git = "https://github.com/aschey/symphonia-adapters", rev = "cc1a7beac9779f8c94be7585107bccf0908b0c48", optional = true }
+symphonia = { git = "https://github.com/aschey/Symphonia", rev = "cae6bc5cb060c80c5f65b6f4bce6750fe4becb76", optional = true }
+symphonia-adapter-fdk-aac = { git = "https://github.com/aschey/symphonia-adapters", rev = "bf5c14d520ee0e4cd048a1654d1c6e991c1561c5", optional = true }
+symphonia-adapter-libopus = { git = "https://github.com/aschey/symphonia-adapters", rev = "bf5c14d520ee0e4cd048a1654d1c6e991c1561c5", optional = true }
 tap = "1"
 thiserror = "2"
 tracing = "0.1"

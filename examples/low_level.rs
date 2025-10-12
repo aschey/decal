@@ -52,9 +52,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 source,
                 1.0,
                 output_config.channels,
-                DecoderSettings {
-                    enable_gapless: true,
-                },
+                DecoderSettings::default(),
             )?;
             if let Some(seek_position) = seek_position.take() {
                 decoder.seek(seek_position).unwrap();

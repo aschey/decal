@@ -185,12 +185,7 @@ fn event_loop<B: AudioBackend>(
         };
         loop {
             let source = Box::new(ReadSeekSource::from_path(Path::new(&current_file))?);
-            let mut decoder = manager.init_decoder(
-                source,
-                DecoderSettings {
-                    enable_gapless: true,
-                },
-            )?;
+            let mut decoder = manager.init_decoder(source, DecoderSettings::default())?;
             if let Some(seek_position) = seek_position.take() {
                 decoder.seek(seek_position).unwrap();
             }

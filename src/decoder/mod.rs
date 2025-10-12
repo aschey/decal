@@ -61,14 +61,25 @@ const NANOS_PER_SEC: f64 = 1_000_000_000.0;
 
 #[derive(Clone, Debug)]
 pub struct DecoderSettings {
-    pub enable_gapless: bool,
+    enable_gapless: bool,
+}
+
+impl DecoderSettings {
+    pub fn new() -> Self {
+        Self {
+            enable_gapless: true,
+        }
+    }
+
+    pub fn enable_gapless(mut self, enable_gapless: bool) -> Self {
+        self.enable_gapless = enable_gapless;
+        self
+    }
 }
 
 impl Default for DecoderSettings {
     fn default() -> Self {
-        Self {
-            enable_gapless: true,
-        }
+        Self::new()
     }
 }
 

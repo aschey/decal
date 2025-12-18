@@ -9,14 +9,14 @@ edition = "2024"
 cpal = { version = "0.16", features = [
   "audio_thread_priority",
 ], optional = true }
-cubeb = { version = "0.31.2", optional = true }
-cubeb-core = { version = "0.31.2", optional = true }
+cubeb = { version = "0.33", optional = true }
+cubeb-core = { version = "0.33", optional = true }
 dasp = { version = "0.11", optional = true }
 rb = { version = "0.4", optional = true }
 rubato = { version = "0.16", optional = true }
 symphonia = { git = "https://github.com/aschey/Symphonia", rev = "9c7caeda511da11f16a8d9c292d65e436b61d1cc", optional = true }
-symphonia-adapter-fdk-aac = { git = "https://github.com/aschey/symphonia-adapters", rev = "9b5c42961994dae8b71a63ee9bc9d688a754e7b2", optional = true }
-symphonia-adapter-libopus = { git = "https://github.com/aschey/symphonia-adapters", rev = "9b5c42961994dae8b71a63ee9bc9d688a754e7b2", optional = true }
+symphonia-adapter-fdk-aac = { git = "https://github.com/aschey/symphonia-adapters", rev = "3e31196f22833293972cfadc1abf1a8a6a8b5469", optional = true }
+symphonia-adapter-libopus = { git = "https://github.com/aschey/symphonia-adapters", rev = "3e31196f22833293972cfadc1abf1a8a6a8b5469", optional = true }
 tap = "1"
 thiserror = "2"
 tracing = "0.1"
@@ -28,8 +28,8 @@ windows-sys = { version = "0.61", features = [
 ], optional = true }
 
 [dev-dependencies]
-crossterm = "0.28.1"
-reedline = "0.42.0"
+crossterm = "0.29"
+reedline = "0.44.0"
 stream-download = { version = "0.22.2", features = ["reqwest-rustls"] }
 tokio = { version = "1.41.0", features = ["macros", "rt-multi-thread"] }
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }

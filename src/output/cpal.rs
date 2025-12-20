@@ -1,3 +1,5 @@
+use cpal::traits::{DeviceTrait as _, HostTrait as _, StreamTrait as _};
+
 use super::{
     AudioBackend, BackendSpecificError, BufferSize, BuildStreamError, DecalSample,
     DefaultStreamConfigError, Device, DeviceNameError, DevicesError, Host, PlayStreamError,
@@ -5,7 +7,6 @@ use super::{
     SupportedStreamConfigRange, SupportedStreamConfigsError,
 };
 use crate::{ChannelCount, SampleRate};
-use cpal::traits::{DeviceTrait as _, HostTrait as _, StreamTrait as _};
 
 #[derive(Default, Clone)]
 pub struct CpalOutput {}
@@ -45,7 +46,7 @@ impl Device for CpalDevice {
 
         Ok(SupportedStreamConfig {
             channels: ChannelCount(config.channels()),
-            sample_rate: SampleRate(config.sample_rate().0),
+            sample_rate: SampleRate(config.sample_rate()),
             buffer_size: match config.buffer_size() {
                 cpal::SupportedBufferSize::Range { min, max } => SupportedBufferSize::Range {
                     min: *min,
@@ -70,7 +71,7 @@ impl Device for CpalDevice {
     }
 
     fn name(&self) -> Result<String, DeviceNameError> {
-        Ok(self.0.name().unwrap())
+        Ok(self.0.description().unwrap().name().to_string())
     }
 
     fn supported_output_configs(
@@ -79,8 +80,8 @@ impl Device for CpalDevice {
         Ok(Box::new(self.0.supported_output_configs().unwrap().map(
             |c| SupportedStreamConfigRange {
                 channels: ChannelCount(c.channels()),
-                min_sample_rate: SampleRate(c.max_sample_rate().0),
-                max_sample_rate: SampleRate(c.max_sample_rate().0),
+                min_sample_rate: SampleRate(c.max_sample_rate()),
+                max_sample_rate: SampleRate(c.max_sample_rate()),
                 buffer_size: match c.buffer_size() {
                     cpal::SupportedBufferSize::Range { min, max } => SupportedBufferSize::Range {
                         min: *min,
@@ -121,7 +122,7 @@ impl Device for CpalDevice {
             .build_output_stream(
                 &cpal::StreamConfig {
                     channels: config.channels.0,
-                    sample_rate: cpal::SampleRate(config.sample_rate.0),
+                    sample_rate: config.sample_rate.0,
                     buffer_size: match config.buffer_size {
                         BufferSize::Fixed(val) => cpal::BufferSize::Fixed(val),
                         BufferSize::Default => cpal::BufferSize::Default,
@@ -133,6 +134,8 @@ impl Device for CpalDevice {
                 move |stream_error| {
                     error_callback(match stream_error {
                         cpal::StreamError::DeviceNotAvailable => StreamError::DeviceNotAvailable,
+                        cpal::StreamError::StreamInvalidated => StreamError::StreamInvalidated,
+                        cpal::StreamError::BufferUnderrun => StreamError::BufferUnderrun,
                         cpal::StreamError::BackendSpecific { err } => {
                             StreamError::BackendSpecific(BackendSpecificError(err.to_string()))
                         }

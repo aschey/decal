@@ -1,9 +1,11 @@
-use crate::{ChannelCount, SampleRate};
-use rb::{RB, RbConsumer, RbInspector, RbProducer, SpscRb};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
+
+use rb::{RB, RbConsumer, RbInspector, RbProducer, SpscRb};
 use thiserror::Error;
 use tracing::{info, warn};
+
+use crate::{ChannelCount, SampleRate};
 
 #[cfg(feature = "output-cpal")]
 mod cpal;
@@ -34,7 +36,8 @@ pub enum DefaultStreamConfigError {}
 #[derive(thiserror::Error, Debug)]
 pub enum BuildStreamError {
     #[error(
-        "The device no longer exists. This can happen if the device is disconnected while the program is running."
+        "The device no longer exists. This can happen if the device is disconnected while the \
+         program is running."
     )]
     DeviceNotAvailable,
     #[error("The specified stream configuration is not supported.")]
@@ -51,6 +54,10 @@ pub enum BuildStreamError {
 pub enum StreamError {
     #[error("Device not available")]
     DeviceNotAvailable,
+    #[error("Stream is no longer valid and must be rebuilt")]
+    StreamInvalidated,
+    #[error("Buffer underrun - may cause audio glitches")]
+    BufferUnderrun,
     #[error("{0}")]
     BackendSpecific(BackendSpecificError),
 }
@@ -288,7 +295,7 @@ pub enum WriteBlockingError {
 
 pub struct OutputBuilder<B: AudioBackend> {
     host: Arc<B::Host>,
-    on_device_changed: Arc<Box<dyn Fn() + Send + Sync>>,
+    on_configuration_changed: Arc<Box<dyn Fn() + Send + Sync>>,
     on_error: Arc<Box<dyn Fn(BackendSpecificError) + Send + Sync>>,
     current_device: Arc<RwLock<Option<String>>>,
     settings: OutputSettings,
@@ -298,7 +305,7 @@ impl<B: AudioBackend> Clone for OutputBuilder<B> {
     fn clone(&self) -> Self {
         Self {
             host: self.host.clone(),
-            on_device_changed: self.on_device_changed.clone(),
+            on_configuration_changed: self.on_configuration_changed.clone(),
             on_error: self.on_error.clone(),
             current_device: self.current_device.clone(),
             settings: self.settings.clone(),
@@ -310,7 +317,7 @@ impl<B: AudioBackend> OutputBuilder<B> {
     pub fn new<F1, F2>(
         backend: B,
         settings: OutputSettings,
-        on_device_changed: F1,
+        on_configuration_changed: F1,
         on_error: F2,
     ) -> Self
     where
@@ -321,7 +328,7 @@ impl<B: AudioBackend> OutputBuilder<B> {
         Self::new_from_host(
             backend.default_host(),
             settings,
-            on_device_changed,
+            on_configuration_changed,
             on_error,
         )
     }
@@ -334,30 +341,10 @@ impl<B: AudioBackend> OutputBuilder<B> {
         self.settings = settings;
     }
 
-    // pub fn new_from_host_id<F1, F2>(
-    //     backend: B,
-    //     host_id: HostId,
-    //     settings: OutputSettings,
-    //     on_device_changed: F1,
-    //     on_error: F2,
-    // ) -> Result<Self, HostUnavailableError>
-    // where
-    //     B: AudioBackend,
-    //     F1: Fn() + Send + Sync + 'static,
-    //     F2: Fn(BackendSpecificError) + Send + Sync + 'static,
-    // {
-    //     Ok(Self::new_from_host(
-    //         backend.host_from_id(host_id)?,
-    //         settings,
-    //         on_device_changed,
-    //         on_error,
-    //     ))
-    // }
-
     pub fn new_from_host<F1, F2>(
         host: B::Host,
         settings: OutputSettings,
-        on_device_changed: F1,
+        on_configuration_changed: F1,
         on_error: F2,
     ) -> Self
     where
@@ -366,7 +353,7 @@ impl<B: AudioBackend> OutputBuilder<B> {
     {
         let builder = Self {
             host: Arc::new(host),
-            on_device_changed: Arc::new(Box::new(on_device_changed)),
+            on_configuration_changed: Arc::new(Box::new(on_configuration_changed)),
             on_error: Arc::new(Box::new(on_error)),
             current_device: Default::default(),
             settings,
@@ -376,7 +363,7 @@ impl<B: AudioBackend> OutputBuilder<B> {
         {
             let current_device = builder.current_device.clone();
             let host = builder.host.clone();
-            let on_device_changed = builder.on_device_changed.clone();
+            let on_configuration_changed = builder.on_configuration_changed.clone();
 
             // On Windows, changes to the default device aren't picked up automatically
             // We have to poll the current device and force a restart.
@@ -393,7 +380,7 @@ impl<B: AudioBackend> OutputBuilder<B> {
                             .unwrap_or_default();
 
                         if default_device != current_default_device {
-                            on_device_changed();
+                            on_configuration_changed();
                             current_default_device = default_device;
                         }
                     }
@@ -502,7 +489,7 @@ impl<B: AudioBackend> OutputBuilder<B> {
         Ok(AudioOutput::<T, B>::new(
             device,
             config,
-            self.on_device_changed.clone(),
+            self.on_configuration_changed.clone(),
             self.on_error.clone(),
             self.settings.clone(),
         ))
@@ -513,7 +500,7 @@ pub struct AudioOutput<T, B: AudioBackend> {
     ring_buf_producer: rb::Producer<T>,
     ring_buf: SpscRb<T>,
     stream: Option<Box<dyn Stream>>,
-    on_device_changed: Arc<Box<dyn Fn() + Send + Sync>>,
+    on_configuration_changed: Arc<Box<dyn Fn() + Send + Sync>>,
     on_error: Arc<Box<dyn Fn(BackendSpecificError) + Send + Sync>>,
     device: B::Device,
     config: SupportedStreamConfig,
@@ -524,7 +511,7 @@ impl<T: DecalSample + Default + 'static, B: AudioBackend> AudioOutput<T, B> {
     pub(crate) fn new(
         device: B::Device,
         config: SupportedStreamConfig,
-        on_device_changed: Arc<Box<dyn Fn() + Send + Sync>>,
+        on_configuration_changed: Arc<Box<dyn Fn() + Send + Sync>>,
         on_error: Arc<Box<dyn Fn(BackendSpecificError) + Send + Sync>>,
         settings: OutputSettings,
     ) -> Self {
@@ -540,7 +527,7 @@ impl<T: DecalSample + Default + 'static, B: AudioBackend> AudioOutput<T, B> {
             stream: None,
             device,
             config,
-            on_device_changed,
+            on_configuration_changed,
             on_error,
             settings,
         }
@@ -631,7 +618,7 @@ impl<T: DecalSample + Default + 'static, B: AudioBackend> AudioOutput<T, B> {
 
         let filler = T::EQUILIBRIUM;
         let on_error = self.on_error.clone();
-        let on_device_changed = self.on_device_changed.clone();
+        let on_configuration_changed = self.on_configuration_changed.clone();
         let stream = self
             .device
             .build_output_stream(
@@ -647,12 +634,15 @@ impl<T: DecalSample + Default + 'static, B: AudioBackend> AudioOutput<T, B> {
                     }
                 },
                 move |err| match err {
-                    StreamError::DeviceNotAvailable => {
-                        info!("Device unplugged. Resetting...");
-                        on_device_changed();
+                    StreamError::DeviceNotAvailable | StreamError::StreamInvalidated => {
+                        info!("Stream resetting due to error or configuration change...");
+                        on_configuration_changed();
                     }
                     StreamError::BackendSpecific(err) => {
                         on_error(err);
+                    }
+                    StreamError::BufferUnderrun => {
+                        warn!("buffer underrun");
                     }
                 },
             )

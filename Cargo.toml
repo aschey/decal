@@ -6,7 +6,7 @@ edition = "2024"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-cpal = { version = "0.16", features = [
+cpal = { version = "0.17", features = [
   "audio_thread_priority",
 ], optional = true }
 cubeb = { version = "0.33", optional = true }
@@ -30,9 +30,9 @@ windows-sys = { version = "0.61", features = [
 [dev-dependencies]
 crossterm = "0.29"
 reedline = "0.44.0"
-stream-download = { version = "0.22.2", features = ["reqwest-rustls"] }
-tokio = { version = "1.41.0", features = ["macros", "rt-multi-thread"] }
-tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+stream-download = { version = "0.22.9", features = ["reqwest-rustls"] }
+tokio = { version = "1.48.0", features = ["macros", "rt-multi-thread"] }
+tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
 
 [features]
 output = ["dep:rb"]
@@ -65,7 +65,6 @@ decoder-all-meta = ["decoder", "symphonia/all-meta"]
 decoder-all = ["decoder", "symphonia/all"]
 decoder-simd = ["symphonia/opt-simd"]
 cpal-asio = ["cpal/asio"]
-cpal-oboe-shared-stdcxx = ["cpal/oboe-shared-stdcxx"]
 cpal-jack = ["cpal/jack"]
 mock = []
 default = ["decoder-all", "output-cpal", "mock"]

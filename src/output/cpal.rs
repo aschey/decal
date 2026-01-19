@@ -92,15 +92,17 @@ impl Device for CpalDevice {
                 sample_format: match c.sample_format() {
                     cpal::SampleFormat::I8 => SampleFormat::I8,
                     cpal::SampleFormat::I16 => SampleFormat::I16,
+                    cpal::SampleFormat::I24 => SampleFormat::I24,
                     cpal::SampleFormat::I32 => SampleFormat::I32,
                     cpal::SampleFormat::I64 => SampleFormat::I64,
                     cpal::SampleFormat::U8 => SampleFormat::U8,
                     cpal::SampleFormat::U16 => SampleFormat::U16,
+                    cpal::SampleFormat::U24 => SampleFormat::U24,
                     cpal::SampleFormat::U32 => SampleFormat::U32,
                     cpal::SampleFormat::U64 => SampleFormat::U64,
                     cpal::SampleFormat::F32 => SampleFormat::F32,
                     cpal::SampleFormat::F64 => SampleFormat::F64,
-                    _ => unimplemented!("unsupported"),
+                    c => unimplemented!("unsupported: {c:?}"),
                 },
             },
         )))

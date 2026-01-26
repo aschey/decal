@@ -16,7 +16,9 @@ jobs:
         run: cargo build --no-default-features
       - name: Clippy
         run: cargo clippy -- -D warnings
+      - name: Build
+        run: cargo build --all-features
       - name: Build all
-        run: cargo build
+        run: cargo build --all-features
       - name: Test
         run: cargo test

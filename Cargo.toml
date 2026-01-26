@@ -9,14 +9,14 @@ edition = "2024"
 cpal = { version = "0.17", features = [
   "audio_thread_priority",
 ], optional = true }
-cubeb = { version = "0.33", optional = true }
-cubeb-core = { version = "0.33", optional = true }
+cubeb = { version = "0.34", optional = true }
+cubeb-core = { version = "0.34", optional = true }
 dasp = { version = "0.11", optional = true }
 rb = { version = "0.4", optional = true }
 rubato = { version = "0.16", optional = true }
-symphonia = { git = "https://github.com/aschey/Symphonia", rev = "9c7caeda511da11f16a8d9c292d65e436b61d1cc", optional = true }
-symphonia-adapter-fdk-aac = { git = "https://github.com/aschey/symphonia-adapters", rev = "c7b05150d5b4534cd48cb2fa96588018762e9b0c", optional = true }
-symphonia-adapter-libopus = { git = "https://github.com/aschey/symphonia-adapters", rev = "c7b05150d5b4534cd48cb2fa96588018762e9b0c", optional = true }
+symphonia = { git = "https://github.com/aschey/Symphonia", rev = "846b25b8f27f76bdb21990a85341557b3e5ab531", optional = true }
+symphonia-adapter-fdk-aac = { git = "https://github.com/aschey/symphonia-adapters", rev = "39e6c51343917bdc47af1e80389692cbdadd806b", optional = true }
+symphonia-adapter-libopus = { git = "https://github.com/aschey/symphonia-adapters", rev = "39e6c51343917bdc47af1e80389692cbdadd806b", optional = true }
 tap = "1"
 thiserror = "2"
 tracing = "0.1"
@@ -29,8 +29,8 @@ windows-sys = { version = "0.61", features = [
 
 [dev-dependencies]
 crossterm = "0.29"
-reedline = "0.44.0"
-stream-download = { version = "0.22.9", features = ["reqwest-rustls"] }
+reedline = "0.45.0"
+stream-download = { version = "0.23.0", features = ["reqwest-rustls"] }
 tokio = { version = "1.48.0", features = ["macros", "rt-multi-thread"] }
 tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
 

@@ -17,7 +17,7 @@ jobs:
       - name: Clippy
         run: cargo clippy -- -D warnings
       - name: Build
-        run: cargo build --all-features
+        run: cargo build
       - name: Build all
         run: cargo build --features=output-cubeb,decoder-simd
       - name: Test

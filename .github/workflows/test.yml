@@ -19,6 +19,6 @@ jobs:
       - name: Build
         run: cargo build --all-features
       - name: Build all
-        run: cargo build --all-features
+        run: cargo build --features=output-cubeb,decoder-simd
       - name: Test
         run: cargo test

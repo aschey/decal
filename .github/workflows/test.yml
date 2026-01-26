@@ -19,6 +19,6 @@ jobs:
       - name: Build
         run: cargo build
       - name: Build all
-        run: cargo build --features=output-cubeb,decoder-simd
+        run: cargo build --features=output-cubeb,decoder-simd,symphonia-adapter-libopus,symphonia-adapter-fdk-aac
       - name: Test
         run: cargo test

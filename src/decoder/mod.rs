@@ -24,12 +24,11 @@ use tracing::{error, info, warn};
 
 mod resampler;
 pub use resampler::*;
-mod channel_buffer;
 mod source;
 pub use source::*;
+mod fixed_buffer;
 
 use crate::{ChannelCount, SampleRate};
-mod vec_ext;
 
 #[derive(Error, Debug)]
 pub enum DecoderError {

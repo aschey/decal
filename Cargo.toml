@@ -13,14 +13,14 @@ cubeb = { version = "0.34", optional = true }
 cubeb-core = { version = "0.34", optional = true }
 dasp = { version = "0.11", optional = true }
 rb = { version = "0.4", optional = true }
-rubato = { version = "0.16", optional = true }
+rubato = { version = "1.0.1", optional = true }
+audioadapter-buffers = { version = "2", optional = true }
 symphonia = { git = "https://github.com/aschey/Symphonia", rev = "846b25b8f27f76bdb21990a85341557b3e5ab531", optional = true }
 symphonia-adapter-fdk-aac = { git = "https://github.com/aschey/symphonia-adapters", rev = "39e6c51343917bdc47af1e80389692cbdadd806b", optional = true }
 symphonia-adapter-libopus = { git = "https://github.com/aschey/symphonia-adapters", rev = "39e6c51343917bdc47af1e80389692cbdadd806b", optional = true }
 tap = "1"
 thiserror = "2"
 tracing = "0.1"
-
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = [
@@ -38,7 +38,12 @@ tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
 output = ["dep:rb"]
 output-cpal = ["output", "dep:cpal"]
 output-cubeb = ["output", "cubeb", "cubeb-core", "windows-sys"]
-decoder = ["dep:symphonia", "dep:dasp", "dep:rubato"]
+decoder = [
+  "dep:symphonia",
+  "dep:dasp",
+  "dep:rubato",
+  "dep:audioadapter-buffers",
+]
 decoder-aac = ["decoder", "symphonia/aac"]
 decoder-fdk-aac = ["decoder", "symphonia-adapter-fdk-aac"]
 decoder-libopus = ["decoder", "symphonia-adapter-libopus"]

@@ -1,19 +1,17 @@
+use super::{Decoder, DecoderError};
+use crate::decoder::fixed_buffer::FixedBuffer;
+use crate::{ChannelCount, SampleRate};
+use audioadapter_buffers::direct::InterleavedSlice;
 use dasp::sample::Sample as DaspSample;
-use rubato::{FftFixedInOut, Resampler};
+use rubato::{Fft, FixedSync, Indexing, Resampler};
 use symphonia::core::audio::conv::ConvertibleSample;
 use symphonia::core::audio::sample::Sample;
 
-use crate::{ChannelCount, SampleRate};
-
-use super::channel_buffer::ChannelBuffer;
-use super::vec_ext::VecExt;
-use super::{Decoder, DecoderError};
-
 struct ResampleDecoderInner<T: Sample + DaspSample> {
-    written: usize,
-    in_buf: ChannelBuffer<T>,
-    resampler: FftFixedInOut<T>,
-    resampler_buf: Vec<Vec<T>>,
+    frame_position: usize,
+    channels: usize,
+    resampler: Fft<T>,
+    in_buf: FixedBuffer<T>,
     out_buf: Vec<T>,
 }
 
@@ -26,15 +24,22 @@ pub enum DecoderResult {
 impl<T: Sample + DaspSample + ConvertibleSample + rubato::Sample> ResampleDecoderInner<T> {
     fn next(&mut self, decoder: &mut Decoder<T>) -> Result<DecoderResult, DecoderError> {
         let mut cur_frame = decoder.current();
+        self.in_buf.reset();
 
-        while !self.in_buf.is_full() {
-            self.written += self.in_buf.fill_from_slice(&cur_frame[self.written..]);
+        let input_samples_left = self.resampler.input_frames_next() * self.channels;
+        while self.in_buf.position() < input_samples_left {
+            let to_write = (cur_frame.len() - self.frame_position)
+                .min(input_samples_left)
+                .min(self.in_buf.remaining());
+            self.in_buf
+                .append_from_slice(&cur_frame[self.frame_position..self.frame_position + to_write]);
+            self.frame_position += to_write;
 
-            if self.written == cur_frame.len() {
+            if self.frame_position == cur_frame.len() {
                 match decoder.next()? {
                     Some(next) => {
                         cur_frame = next;
-                        self.written = 0;
+                        self.frame_position = 0;
                     }
                     None => {
                         return Ok(DecoderResult::Finished);
@@ -43,12 +48,16 @@ impl<T: Sample + DaspSample + ConvertibleSample + rubato::Sample> ResampleDecode
             }
         }
 
+        let (input_adapter, mut output_adapter) = create_adapters(
+            &self.in_buf,
+            &mut self.out_buf,
+            &self.resampler,
+            self.channels,
+        );
         self.resampler
-            .process_into_buffer(self.in_buf.inner(), &mut self.resampler_buf, None)
+            .process_into_buffer(&input_adapter, &mut output_adapter, None)
             .expect("number of frames was not correctly calculated");
-        self.in_buf.reset();
 
-        self.out_buf.fill_from_deinterleaved(&self.resampler_buf);
         Ok(DecoderResult::Unfinished)
     }
 
@@ -57,17 +66,53 @@ impl<T: Sample + DaspSample + ConvertibleSample + rubato::Sample> ResampleDecode
     }
 
     fn flush(&mut self) -> &[T] {
-        if self.in_buf.position() > 0 {
-            self.in_buf.silence_remainder();
-            self.resampler
-                .process_into_buffer(self.in_buf.inner(), &mut self.resampler_buf, None)
+        if self.frame_position > 0 {
+            let (input_adapter, mut output_adapter) = create_adapters(
+                &self.in_buf,
+                &mut self.out_buf,
+                &self.resampler,
+                self.channels,
+            );
+
+            let input_frames = self.resampler.input_frames_next();
+            let partial_len = input_frames - (self.frame_position / self.channels);
+            let (_, n_out) = self
+                .resampler
+                .process_into_buffer(
+                    &input_adapter,
+                    &mut output_adapter,
+                    Some(&Indexing {
+                        input_offset: 0,
+                        output_offset: 0,
+                        partial_len: Some(partial_len),
+                        active_channels_mask: None,
+                    }),
+                )
                 .expect("number of frames was not correctly calculated");
-            self.in_buf.reset();
-            &self.out_buf
+            &self.out_buf[..n_out]
         } else {
             &[]
         }
     }
+}
+
+fn create_adapters<'a, T>(
+    in_buf: &'a FixedBuffer<T>,
+    out_buf: &'a mut [T],
+    resampler: &Fft<T>,
+    channels: usize,
+) -> (InterleavedSlice<&'a [T]>, InterleavedSlice<&'a mut [T]>)
+where
+    T: rubato::Sample,
+{
+    let input_adapter =
+        InterleavedSlice::new(in_buf.inner(), channels, resampler.input_frames_next())
+            .expect("number of frames was not correctly calculated");
+
+    let output_adapter =
+        InterleavedSlice::new_mut(out_buf, channels, resampler.output_frames_next())
+            .expect("number of frames was not correctly calculated");
+    (input_adapter, output_adapter)
 }
 
 #[allow(clippy::large_enum_variant)]
@@ -123,30 +168,31 @@ impl<T: Sample + DaspSample + ConvertibleSample + rubato::Sample> ResampledDecod
                 if sample_rate_changed {
                     self.initialize_resampler();
                 } else {
-                    inner.written = 0;
+                    inner.frame_position = 0;
                 }
             }
         }
     }
 
     fn initialize_resampler(&mut self) {
-        let resampler = FftFixedInOut::<T>::new(
+        let resampler = Fft::<T>::new(
             self.in_sample_rate.0 as usize,
             self.out_sample_rate.0 as usize,
             self.settings.chunk_size,
+            1,
             self.channels.0 as usize,
+            FixedSync::Both,
         )
         .expect("failed to create resampler");
 
-        let in_buf = resampler.input_buffer_allocate(true);
-        let resampler_buf = resampler.output_buffer_allocate(true);
-        let n_frames = resampler.input_frames_next();
+        let n_frames_in = resampler.input_frames_max();
+        let n_frames_out = resampler.output_frames_max();
 
         let resampler = ResampledDecoderImpl::Resampled(ResampleDecoderInner {
-            written: 0,
-            resampler_buf,
-            out_buf: Vec::with_capacity(n_frames * self.channels.0 as usize),
-            in_buf: ChannelBuffer::new(in_buf),
+            channels: self.channels.0 as usize,
+            in_buf: FixedBuffer::new(T::MID, n_frames_in * self.channels.0 as usize),
+            out_buf: vec![T::MID; n_frames_out * self.channels.0 as usize],
+            frame_position: 0,
             resampler,
         });
         self.decoder_inner = resampler;

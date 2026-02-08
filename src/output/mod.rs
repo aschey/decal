@@ -40,6 +40,8 @@ pub enum BuildStreamError {
          program is running."
     )]
     DeviceNotAvailable,
+    #[error("The device is busy. This may be due to another stream using the device")]
+    DeviceBusy,
     #[error("The specified stream configuration is not supported.")]
     StreamConfigNotSupported,
     #[error("Called something the device didn't understand")]

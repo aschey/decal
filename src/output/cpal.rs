@@ -147,7 +147,7 @@ impl Device for CpalDevice {
             )
             .map_err(|e| match e {
                 cpal::BuildStreamError::DeviceNotAvailable => BuildStreamError::DeviceNotAvailable,
-                cpal::BuildStreamError::DeviceBusy => BuildStreamError::DeviceBusy,
+                //cpal::BuildStreamError::DeviceBusy => BuildStreamError::DeviceBusy,
                 cpal::BuildStreamError::StreamConfigNotSupported => {
                     BuildStreamError::StreamConfigNotSupported
                 }

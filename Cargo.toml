@@ -6,7 +6,7 @@ edition = "2024"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-cpal = { version = "0.17.2", features = [
+cpal = { version = "0.17.1", features = [
   "audio_thread_priority",
 ], optional = true }
 cubeb = { version = "0.34", optional = true }
@@ -15,9 +15,9 @@ dasp = { version = "0.11", optional = true }
 rb = { version = "0.4", optional = true }
 rubato = { version = "1.0.1", optional = true }
 audioadapter-buffers = { version = "2", optional = true }
-symphonia = { git = "https://github.com/aschey/Symphonia", rev = "846b25b8f27f76bdb21990a85341557b3e5ab531", optional = true }
-symphonia-adapter-fdk-aac = { git = "https://github.com/aschey/symphonia-adapters", rev = "39e6c51343917bdc47af1e80389692cbdadd806b", optional = true }
-symphonia-adapter-libopus = { git = "https://github.com/aschey/symphonia-adapters", rev = "39e6c51343917bdc47af1e80389692cbdadd806b", optional = true }
+symphonia = { git = "https://github.com/pdeljanov/Symphonia", rev = "449b1889381626920ffa016cfcc9fa168872f287", optional = true }
+symphonia-adapter-fdk-aac = { git = "https://github.com/aschey/symphonia-adapters", rev = "359417934943390edbb019f7cdc2b813284dcc17", optional = true }
+symphonia-adapter-libopus = { git = "https://github.com/aschey/symphonia-adapters", rev = "359417934943390edbb019f7cdc2b813284dcc17", optional = true }
 tap = "1"
 thiserror = "2"
 tracing = "0.1"

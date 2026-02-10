@@ -10,12 +10,11 @@ use symphonia::core::codecs::registry::CodecRegistry;
 use symphonia::core::errors::Error;
 pub use symphonia::core::formats::SeekTo;
 use symphonia::core::formats::probe::Hint;
-use symphonia::core::formats::{
-    FormatOptions, FormatReader, Packet, SeekMode, SeekedTo, Track, TrackType,
-};
+use symphonia::core::formats::{FormatOptions, FormatReader, SeekMode, SeekedTo, Track, TrackType};
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::{Metadata, MetadataOptions};
-pub use symphonia::core::units::TimeStamp;
+use symphonia::core::packet::Packet;
+pub use symphonia::core::units::Timestamp;
 use symphonia::core::units::{Time, TimeBase};
 use symphonia::default::codecs;
 use tap::TapFallible;
@@ -55,8 +54,6 @@ pub struct CurrentPosition {
     pub position: Duration,
     pub retrieval_time: Option<Duration>,
 }
-
-const NANOS_PER_SEC: f64 = 1_000_000_000.0;
 
 #[derive(Clone, Debug)]
 pub struct DecoderSettings {
@@ -159,11 +156,11 @@ pub struct Decoder<T: Sample + dasp::sample::Sample> {
     track_id: u32,
     input_channels: ChannelCount,
     output_channels: ChannelCount,
-    timestamp: u64,
+    timestamp: Timestamp,
     is_paused: bool,
     sample_rate: SampleRate,
     num_frames: Option<u64>,
-    seek_required_ts: Option<u64>,
+    seek_required_ts: Option<Timestamp>,
     settings: DecoderSettings,
 }
 
@@ -220,7 +217,9 @@ where
 
         // If no time base found, default to a dummy one
         // and attempt to calculate it from the sample rate later
-        let time_base = track.time_base.unwrap_or_else(|| TimeBase::new(1, 1));
+        let time_base = track
+            .time_base
+            .unwrap_or_else(|| TimeBase::new(1.try_into().unwrap(), 1.try_into().unwrap()));
 
         let mut decoder = Self {
             decoder,
@@ -233,7 +232,7 @@ where
             buf: vec![],
             sample_buf: vec![],
             volume,
-            timestamp: 0,
+            timestamp: 0.into(),
             is_paused: false,
             sample_rate: SampleRate(0),
             seek_required_ts: None,
@@ -255,10 +254,10 @@ where
 
     pub fn duration(&self) -> Option<Duration> {
         let num_frames = self.num_frames?;
-        if self.time_base.denom == 1 {
+        if self.time_base.denom.get() == 1 {
             return None;
         }
-        Some(self.timestamp_to_duration(num_frames))
+        Some(self.timestamp_to_duration(num_frames.try_into().unwrap()))
     }
 
     pub fn set_volume(&mut self, volume: T::Float) {
@@ -316,10 +315,9 @@ where
         seek_result
     }
 
-    fn timestamp_to_duration(&self, timestamp: u64) -> Duration {
-        let time = self.time_base.calc_time(timestamp);
-        let millis = ((time.seconds as f64 + time.frac) * 1000.0) as u64;
-        Duration::from_millis(millis)
+    fn timestamp_to_duration(&self, timestamp: Timestamp) -> Duration {
+        let time = self.time_base.calc_time(timestamp).unwrap();
+        Duration::from_millis(time.as_millis() as u64)
     }
 
     pub fn current_position(&self) -> CurrentPosition {
@@ -340,7 +338,7 @@ where
     }
 
     fn reader_seek(&mut self, time: Duration) -> Result<SeekedTo, DecoderError> {
-        let seek_time = Time::new(time.as_secs(), time.subsec_nanos() as f64 / NANOS_PER_SEC);
+        let seek_time = Time::try_from_nanos_u128(time.as_nanos()).unwrap();
         let res = self.reader.seek(
             SeekMode::Coarse,
             SeekTo::Time {
@@ -351,7 +349,7 @@ where
         self.decoder.reset();
         if res.is_ok() {
             // Manually set the timestamp here in case it's queried before we decode the next packet
-            self.timestamp = self.time_base.calc_timestamp(seek_time);
+            self.timestamp = self.time_base.calc_timestamp(seek_time).unwrap();
         }
         res.map_err(DecoderError::Seek)
     }
@@ -361,8 +359,11 @@ where
 
         loop {
             self.next()?;
-            if self.time_base.denom == 1 {
-                self.time_base = TimeBase::new(1, self.sample_rate.0);
+            if self.time_base.denom.get() == 1 {
+                self.time_base = TimeBase::new(
+                    1.try_into().unwrap(),
+                    self.sample_rate.0.try_into().unwrap(),
+                );
             }
             if !self.settings.enable_gapless {
                 break;
@@ -495,7 +496,7 @@ where
                         Ok(Some(packet)) => {
                             if packet.track_id() == self.track_id {
                                 if let Some(required_ts) = self.seek_required_ts {
-                                    if packet.ts() < required_ts {
+                                    if packet.pts() < required_ts {
                                         continue;
                                     } else {
                                         self.seek_required_ts = None;
@@ -517,7 +518,7 @@ where
                         }
                     };
                 };
-                self.timestamp = packet.ts();
+                self.timestamp = packet.pts();
                 match self.process_output(&packet) {
                     Ok(()) => break,
                     Err(DecoderError::Recoverable(e)) => {

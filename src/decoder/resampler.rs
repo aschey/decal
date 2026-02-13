@@ -36,10 +36,10 @@ impl<T: Sample + DaspSample + ConvertibleSample + rubato::Sample> ResampleDecode
             self.frame_position += to_write;
 
             if self.frame_position == cur_frame.len() {
+                self.frame_position = 0;
                 match decoder.next()? {
                     Some(next) => {
                         cur_frame = next;
-                        self.frame_position = 0;
                     }
                     None => {
                         return Ok(DecoderResult::Finished);
@@ -66,33 +66,34 @@ impl<T: Sample + DaspSample + ConvertibleSample + rubato::Sample> ResampleDecode
     }
 
     fn flush(&mut self) -> &[T] {
-        if self.frame_position > 0 {
-            let (input_adapter, mut output_adapter) = create_adapters(
-                &self.in_buf,
-                &mut self.out_buf,
-                &self.resampler,
-                self.channels,
-            );
-
-            let input_frames = self.resampler.input_frames_next();
-            let partial_len = input_frames - (self.frame_position / self.channels);
-            let (_, n_out) = self
-                .resampler
-                .process_into_buffer(
-                    &input_adapter,
-                    &mut output_adapter,
-                    Some(&Indexing {
-                        input_offset: 0,
-                        output_offset: 0,
-                        partial_len: Some(partial_len),
-                        active_channels_mask: None,
-                    }),
-                )
-                .expect("number of frames was not correctly calculated");
-            &self.out_buf[..n_out]
-        } else {
-            &[]
+        let in_position = self.in_buf.position();
+        if in_position == 0 {
+            return &[];
         }
+
+        let (input_adapter, mut output_adapter) = create_adapters(
+            &self.in_buf,
+            &mut self.out_buf,
+            &self.resampler,
+            self.channels,
+        );
+
+        let input_frames = self.resampler.input_frames_next();
+        let partial_len = input_frames - (in_position / self.channels);
+        let (_, n_out) = self
+            .resampler
+            .process_into_buffer(
+                &input_adapter,
+                &mut output_adapter,
+                Some(&Indexing {
+                    input_offset: 0,
+                    output_offset: 0,
+                    partial_len: Some(partial_len),
+                    active_channels_mask: None,
+                }),
+            )
+            .expect("number of frames was not correctly calculated");
+        &self.out_buf[..n_out]
     }
 }
 

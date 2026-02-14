@@ -78,7 +78,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                     ResamplerSettings::default(),
                 );
 
-                resampled.initialize(decoder.sample_rate());
+                resampled.initialize(&mut decoder)?;
 
                 // Pre-fill output buffer before starting the stream
                 while resampled.current(&decoder).len() <= output.buffer_space_available() {
@@ -93,7 +93,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 if decoder.sample_rate() != resampled.in_sample_rate() {
                     output.write_blocking(resampled.flush()).ok();
                 }
-                resampled.initialize(decoder.sample_rate());
+                resampled.initialize(&mut decoder)?;
             }
 
             let go_next = loop {

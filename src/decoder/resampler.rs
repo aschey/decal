@@ -24,7 +24,6 @@ pub enum DecoderResult {
 impl<T: Sample + DaspSample + ConvertibleSample + rubato::Sample> ResampleDecoderInner<T> {
     fn next(&mut self, decoder: &mut Decoder<T>) -> Result<DecoderResult, DecoderError> {
         let mut cur_frame = decoder.current();
-        self.in_buf.reset();
 
         let input_samples_left = self.resampler.input_frames_next() * self.channels;
         while self.in_buf.position() < input_samples_left {
@@ -57,7 +56,7 @@ impl<T: Sample + DaspSample + ConvertibleSample + rubato::Sample> ResampleDecode
         self.resampler
             .process_into_buffer(&input_adapter, &mut output_adapter, None)
             .expect("number of frames was not correctly calculated");
-
+        self.in_buf.reset();
         Ok(DecoderResult::Unfinished)
     }
 
@@ -78,8 +77,7 @@ impl<T: Sample + DaspSample + ConvertibleSample + rubato::Sample> ResampleDecode
             self.channels,
         );
 
-        let input_frames = self.resampler.input_frames_next();
-        let partial_len = input_frames - (in_position / self.channels);
+        let partial_len = in_position / self.channels;
         let (_, n_out) = self
             .resampler
             .process_into_buffer(
@@ -93,7 +91,8 @@ impl<T: Sample + DaspSample + ConvertibleSample + rubato::Sample> ResampleDecode
                 }),
             )
             .expect("number of frames was not correctly calculated");
-        &self.out_buf[..n_out]
+        self.in_buf.reset();
+        &self.out_buf[..n_out * self.channels]
     }
 }
 
@@ -156,23 +155,25 @@ impl<T: Sample + DaspSample + ConvertibleSample + rubato::Sample> ResampledDecod
         }
     }
 
-    pub fn initialize(&mut self, decoder_sample_rate: SampleRate) {
-        let sample_rate_changed = self.in_sample_rate != decoder_sample_rate;
-        self.in_sample_rate = decoder_sample_rate;
+    pub fn initialize(&mut self, decoder: &mut Decoder<T>) -> Result<(), DecoderError> {
+        let sample_rate_changed = self.in_sample_rate != decoder.sample_rate;
+        self.in_sample_rate = decoder.sample_rate;
         match &mut self.decoder_inner {
             ResampledDecoderImpl::Native => {
                 if self.in_sample_rate != self.out_sample_rate {
                     self.initialize_resampler();
+                    self.decode_next_frame(decoder)?;
                 }
             }
-            ResampledDecoderImpl::Resampled(inner) => {
+            ResampledDecoderImpl::Resampled(_) => {
                 if sample_rate_changed {
                     self.initialize_resampler();
-                } else {
-                    inner.frame_position = 0;
                 }
+                // Ensure current() always returns the current set of samples
+                self.decode_next_frame(decoder)?;
             }
         }
+        Ok(())
     }
 
     fn initialize_resampler(&mut self) {

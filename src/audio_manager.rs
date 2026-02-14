@@ -70,12 +70,11 @@ where
         let output: AudioOutput<T, B> =
             output_builder.new_output::<T>(None, output_config.clone())?;
 
-        let mut resampled = ResampledDecoder::<T>::new(
+        let resampled = ResampledDecoder::<T>::new(
             output_config.sample_rate,
             output_config.channels,
             resampler_settings.clone(),
         );
-        resampled.initialize(DEFAULT_SAMPLE_RATE);
 
         Ok(Self {
             output_config,
@@ -141,7 +140,7 @@ where
 
         // No changes needed, just make sure the output is running
         if !output_config_changed && !in_sample_rate_changed {
-            self.resampled.initialize(decoder.sample_rate());
+            self.resampled.initialize(decoder)?;
             self.output.start()?;
             return Ok(());
         }
@@ -161,8 +160,8 @@ where
                 self.resampler_settings.clone(),
             );
         }
-        self.resampled.initialize(decoder.sample_rate());
-
+        self.resampled.initialize(decoder)?;
+        
         // Pre-fill output buffer before starting the stream
         while self.resampled.current(decoder).len() <= self.output.buffer_space_available() {
             self.output.write(self.resampled.current(decoder)).unwrap();

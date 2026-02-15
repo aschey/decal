@@ -5,8 +5,10 @@ use rtaudio::NativeFormats;
 use crate::{
     ChannelCount, SampleRate,
     output::{
-        AudioBackend, Device, Host, SampleFormat, Stream, StreamError, SupportedBufferSize,
-        SupportedStreamConfig, SupportedStreamConfigRange,
+        AudioBackend, BuildStreamError, DecalSample, DefaultStreamConfigError, Device,
+        DeviceNameError, DevicesError, Host, PlayStreamError, SampleFormat, Stream, StreamConfig,
+        StreamError, SupportedBufferSize, SupportedStreamConfig, SupportedStreamConfigRange,
+        SupportedStreamConfigsError,
     },
 };
 
@@ -26,9 +28,7 @@ pub struct RtAudioDevice(rtaudio::DeviceInfo);
 impl Device for RtAudioDevice {
     type SupportedOutputConfigs = Box<dyn Iterator<Item = SupportedStreamConfigRange>>;
 
-    fn default_output_config(
-        &self,
-    ) -> Result<super::SupportedStreamConfig, super::DefaultStreamConfigError> {
+    fn default_output_config(&self) -> Result<SupportedStreamConfig, DefaultStreamConfigError> {
         Ok(SupportedStreamConfig {
             channels: ChannelCount(self.0.output_channels as u16),
             buffer_size: SupportedBufferSize::Unknown,
@@ -37,13 +37,13 @@ impl Device for RtAudioDevice {
         })
     }
 
-    fn name(&self) -> Result<String, super::DeviceNameError> {
+    fn name(&self) -> Result<String, DeviceNameError> {
         Ok(self.0.name().to_string())
     }
 
     fn supported_output_configs(
         &self,
-    ) -> Result<Self::SupportedOutputConfigs, super::SupportedStreamConfigsError> {
+    ) -> Result<Self::SupportedOutputConfigs, SupportedStreamConfigsError> {
         let formats: Vec<_> = self
             .0
             .native_formats
@@ -69,14 +69,14 @@ impl Device for RtAudioDevice {
 
     fn build_output_stream<T, D, E>(
         &mut self,
-        config: &super::StreamConfig,
+        config: &StreamConfig,
         mut data_callback: D,
         mut error_callback: E,
-    ) -> Result<Box<dyn super::Stream>, super::BuildStreamError>
+    ) -> Result<Box<dyn Stream>, BuildStreamError>
     where
-        T: super::DecalSample,
+        T: DecalSample,
         D: FnMut(&mut [T]) + Send + Sync + 'static,
-        E: FnMut(super::StreamError) + Clone + Send + Sync + 'static,
+        E: FnMut(StreamError) + Clone + Send + Sync + 'static,
     {
         let mut stream = rtaudio::Host::default()
             .open_stream(&rtaudio::StreamConfig {
@@ -86,14 +86,13 @@ impl Device for RtAudioDevice {
                     ..Default::default()
                 }),
                 sample_rate: Some(config.sample_rate.0),
-                sample_format: match <T as super::DecalSample>::FORMAT {
+                sample_format: match <T as DecalSample>::FORMAT {
                     SampleFormat::I8 => rtaudio::SampleFormat::SInt8,
                     SampleFormat::I16 => rtaudio::SampleFormat::SInt16,
-                    SampleFormat::I24 => rtaudio::SampleFormat::SInt24,
                     SampleFormat::I32 => rtaudio::SampleFormat::SInt32,
                     SampleFormat::F32 => rtaudio::SampleFormat::Float32,
                     SampleFormat::F64 => rtaudio::SampleFormat::Float64,
-                    _ => rtaudio::SampleFormat::Float32,
+                    _ => unreachable!(),
                 },
                 ..Default::default()
             })
@@ -111,75 +110,55 @@ impl Device for RtAudioDevice {
                         error_callback(StreamError::BufferUnderrun);
                     }
 
-                    match <T as super::DecalSample>::FORMAT {
-                        SampleFormat::I8 => {
-                            if let rtaudio::Buffers::SInt8 { output, .. } = buffers {
+                    // SAFETY: T will always match the numeric type since we're checking its FORMAT property
+                    match buffers {
+                        rtaudio::Buffers::SInt8 { output, .. } => {
+                            if <i8 as DecalSample>::FORMAT == <T as DecalSample>::FORMAT {
                                 unsafe {
-                                    data_callback(mem::transmute::<&mut [i8], &mut [T]>(output))
-                                };
-                            } else {
-                                error_callback(StreamError::InvalidConfiguration(
-                                    "expected SInt8 format".to_string(),
-                                ))
+                                    data_callback(mem::transmute::<&mut [i8], &mut [T]>(output));
+                                }
+                                return;
                             }
                         }
-                        SampleFormat::I16 => {
-                            if let rtaudio::Buffers::SInt16 { output, .. } = buffers {
+                        rtaudio::Buffers::SInt16 { output, .. } => {
+                            if <i16 as DecalSample>::FORMAT == <T as DecalSample>::FORMAT {
                                 unsafe {
-                                    data_callback(mem::transmute::<&mut [i16], &mut [T]>(output))
-                                };
-                            } else {
-                                error_callback(StreamError::InvalidConfiguration(
-                                    "expected SInt16 format".to_string(),
-                                ))
+                                    data_callback(mem::transmute::<&mut [i16], &mut [T]>(output));
+                                }
+                                return;
                             }
                         }
-                        SampleFormat::I24 => {
-                            if let rtaudio::Buffers::SInt24 { output, .. } = buffers {
+                        rtaudio::Buffers::SInt32 { output, .. } => {
+                            if <i32 as DecalSample>::FORMAT == <T as DecalSample>::FORMAT {
                                 unsafe {
-                                    data_callback(mem::transmute::<&mut [u8], &mut [T]>(output))
-                                };
-                            } else {
-                                error_callback(StreamError::InvalidConfiguration(
-                                    "expected SInt24 format".to_string(),
-                                ))
+                                    data_callback(mem::transmute::<&mut [i32], &mut [T]>(output));
+                                }
+                                return;
                             }
                         }
-                        SampleFormat::I32 => {
-                            if let rtaudio::Buffers::SInt32 { output, .. } = buffers {
+                        rtaudio::Buffers::Float32 { output, .. } => {
+                            if <f32 as DecalSample>::FORMAT == <T as DecalSample>::FORMAT {
                                 unsafe {
-                                    data_callback(mem::transmute::<&mut [i32], &mut [T]>(output))
-                                };
-                            } else {
-                                error_callback(StreamError::InvalidConfiguration(
-                                    "expected SInt32 format".to_string(),
-                                ))
+                                    data_callback(mem::transmute::<&mut [f32], &mut [T]>(output));
+                                }
+                                return;
                             }
                         }
-                        SampleFormat::F32 => {
-                            if let rtaudio::Buffers::Float32 { output, .. } = buffers {
+                        rtaudio::Buffers::Float64 { output, .. } => {
+                            if <f64 as DecalSample>::FORMAT == <T as DecalSample>::FORMAT {
                                 unsafe {
-                                    data_callback(mem::transmute::<&mut [f32], &mut [T]>(output))
-                                };
-                            } else {
-                                error_callback(StreamError::InvalidConfiguration(
-                                    "expected F32 format".to_string(),
-                                ))
+                                    data_callback(mem::transmute::<&mut [f64], &mut [T]>(output));
+                                }
+                                return;
                             }
                         }
-                        SampleFormat::F64 => {
-                            if let rtaudio::Buffers::Float64 { output, .. } = buffers {
-                                unsafe {
-                                    data_callback(mem::transmute::<&mut [f64], &mut [T]>(output))
-                                };
-                            } else {
-                                error_callback(StreamError::InvalidConfiguration(
-                                    "expected F64 format".to_string(),
-                                ))
-                            }
-                        }
-                        _ => unimplemented!(),
+                        // unsupported
+                        rtaudio::Buffers::SInt24 { .. } => {}
                     }
+
+                    error_callback(StreamError::InvalidConfiguration(
+                        "Sample type does not match output buffer".to_string(),
+                    ));
                 },
             )
             .unwrap();
@@ -189,11 +168,11 @@ impl Device for RtAudioDevice {
 }
 
 impl Stream for RtAudioStream {
-    fn play(&mut self) -> Result<(), super::PlayStreamError> {
+    fn play(&mut self) -> Result<(), PlayStreamError> {
         Ok(())
     }
 
-    fn stop(&mut self) -> Result<(), super::PlayStreamError> {
+    fn stop(&mut self) -> Result<(), PlayStreamError> {
         self.0.stop();
         Ok(())
     }
@@ -210,7 +189,7 @@ impl Host for RtAudioHost {
             .map(|i| RtAudioDevice(self.0.devices()[i].clone()))
     }
 
-    fn output_devices(&self) -> Result<Self::Devices, super::DevicesError> {
+    fn output_devices(&self) -> Result<Self::Devices, DevicesError> {
         let devices: Vec<_> = self
             .0
             .devices()

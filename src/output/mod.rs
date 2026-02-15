@@ -1,11 +1,10 @@
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
+use crate::{ChannelCount, SampleRate};
 use rb::{RB, RbConsumer, RbInspector, RbProducer, SpscRb};
 use thiserror::Error;
 use tracing::{error, info, warn};
-
-use crate::{ChannelCount, SampleRate};
 
 #[cfg(feature = "output-cpal")]
 mod cpal;
@@ -196,38 +195,51 @@ impl SupportedStreamConfigRange {
     }
 }
 
-#[cfg(feature = "output-cpal")]
 pub trait DecalSample:
     ::cpal::SizedSample + dasp::Sample + Send + Sync + Default + 'static
 {
     const FORMAT: SampleFormat;
 }
 
-#[cfg(feature = "output-cpal")]
-impl<T> DecalSample for T
-where
-    T: ::cpal::SizedSample + dasp::Sample + Send + Sync + Default + 'static,
-{
-    const FORMAT: SampleFormat = match <T as ::cpal::SizedSample>::FORMAT {
-        ::cpal::SampleFormat::I8 => SampleFormat::I8,
-        ::cpal::SampleFormat::I16 => SampleFormat::I16,
-        ::cpal::SampleFormat::I32 => SampleFormat::I32,
-        ::cpal::SampleFormat::I64 => SampleFormat::I64,
-        ::cpal::SampleFormat::U8 => SampleFormat::U8,
-        ::cpal::SampleFormat::U16 => SampleFormat::U16,
-        ::cpal::SampleFormat::U32 => SampleFormat::U32,
-        ::cpal::SampleFormat::U64 => SampleFormat::U64,
-        ::cpal::SampleFormat::F32 => SampleFormat::F32,
-        ::cpal::SampleFormat::F64 => SampleFormat::F64,
-        _ => unimplemented!(),
-    };
+impl DecalSample for i8 {
+    const FORMAT: SampleFormat = SampleFormat::I8;
 }
 
-#[cfg(not(feature = "output-cpal"))]
-pub trait DecalSample: dasp::Sample + Send + Sync + Default {}
+impl DecalSample for i16 {
+    const FORMAT: SampleFormat = SampleFormat::I16;
+}
 
-#[cfg(not(feature = "output-cpal"))]
-impl<T> DecalSample for T where T: dasp::Sample + Send + Sync + Default {}
+impl DecalSample for i32 {
+    const FORMAT: SampleFormat = SampleFormat::I32;
+}
+
+impl DecalSample for i64 {
+    const FORMAT: SampleFormat = SampleFormat::I64;
+}
+
+impl DecalSample for u8 {
+    const FORMAT: SampleFormat = SampleFormat::U8;
+}
+
+impl DecalSample for u16 {
+    const FORMAT: SampleFormat = SampleFormat::U16;
+}
+
+impl DecalSample for u32 {
+    const FORMAT: SampleFormat = SampleFormat::U32;
+}
+
+impl DecalSample for u64 {
+    const FORMAT: SampleFormat = SampleFormat::U64;
+}
+
+impl DecalSample for f32 {
+    const FORMAT: SampleFormat = SampleFormat::F32;
+}
+
+impl DecalSample for f64 {
+    const FORMAT: SampleFormat = SampleFormat::F64;
+}
 
 pub trait Device {
     type SupportedOutputConfigs: Iterator<Item = SupportedStreamConfigRange>;

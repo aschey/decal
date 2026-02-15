@@ -82,4 +82,4 @@ required-features = ["output-cubeb"]
 
 [[example]]
 name = "rtaudio"
-required-features = ["rtaudio"]
+required-features = ["output-rtaudio"]

@@ -16,12 +16,12 @@ pub struct MockStream {
 }
 
 impl Stream for MockStream {
-    fn play(&self) -> Result<(), PlayStreamError> {
+    fn play(&mut self) -> Result<(), PlayStreamError> {
         self.started.store(true, Ordering::SeqCst);
         Ok(())
     }
 
-    fn stop(&self) -> Result<(), PlayStreamError> {
+    fn stop(&mut self) -> Result<(), PlayStreamError> {
         self.started.store(false, Ordering::SeqCst);
         Ok(())
     }
@@ -97,7 +97,7 @@ impl Device for MockDevice {
     }
 
     fn build_output_stream<T, D, E>(
-        &self,
+        &mut self,
         _config: &StreamConfig,
         mut data_callback: D,
         _error_callback: E,

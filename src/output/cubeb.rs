@@ -198,7 +198,7 @@ impl Device for CubebDevice {
     }
 
     fn build_output_stream<T, D, E>(
-        &self,
+        &mut self,
         config: &StreamConfig,
         mut data_callback: D,
         error_callback: E,
@@ -271,7 +271,7 @@ impl<T> Drop for CubebStream<T> {
 }
 
 impl<T> Stream for CubebStream<T> {
-    fn play(&self) -> Result<(), super::PlayStreamError> {
+    fn play(&mut self) -> Result<(), super::PlayStreamError> {
         if !self.started.swap(true, Ordering::SeqCst) {
             self.stream.start().unwrap();
         }
@@ -279,7 +279,7 @@ impl<T> Stream for CubebStream<T> {
         Ok(())
     }
 
-    fn stop(&self) -> Result<(), super::PlayStreamError> {
+    fn stop(&mut self) -> Result<(), super::PlayStreamError> {
         if self.started.swap(false, Ordering::SeqCst) {
             self.stream.stop().unwrap();
         }

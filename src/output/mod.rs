@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use rb::{RB, RbConsumer, RbInspector, RbProducer, SpscRb};
 use thiserror::Error;
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 
 use crate::{ChannelCount, SampleRate};
 
@@ -15,11 +15,14 @@ pub use cpal::*;
 mod mock;
 #[cfg(feature = "mock")]
 pub use mock::*;
-
 #[cfg(feature = "output-cubeb")]
 mod cubeb;
 #[cfg(feature = "output-cubeb")]
 pub use cubeb::*;
+#[cfg(feature = "output-rtaudio")]
+mod rtaudio;
+#[cfg(feature = "output-rtaudio")]
+pub use rtaudio::*;
 
 #[derive(thiserror::Error, Debug)]
 pub enum PlayStreamError {}
@@ -60,6 +63,10 @@ pub enum StreamError {
     StreamInvalidated,
     #[error("Buffer underrun - may cause audio glitches")]
     BufferUnderrun,
+    #[error("Input data was discarded")]
+    InputOverflow,
+    #[error("Invalid input configuration: {0}")]
+    InvalidConfiguration(String),
     #[error("{0}")]
     BackendSpecific(BackendSpecificError),
 }
@@ -75,9 +82,9 @@ pub enum HostUnavailableError {}
 pub struct BackendSpecificError(pub String);
 
 pub trait Stream {
-    fn play(&self) -> Result<(), PlayStreamError>;
+    fn play(&mut self) -> Result<(), PlayStreamError>;
 
-    fn stop(&self) -> Result<(), PlayStreamError>;
+    fn stop(&mut self) -> Result<(), PlayStreamError>;
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
@@ -234,7 +241,7 @@ pub trait Device {
     ) -> Result<Self::SupportedOutputConfigs, SupportedStreamConfigsError>;
 
     fn build_output_stream<T, D, E>(
-        &self,
+        &mut self,
         config: &StreamConfig,
         data_callback: D,
         error_callback: E,
@@ -292,7 +299,7 @@ pub struct OutputSettings {
 impl Default for OutputSettings {
     fn default() -> Self {
         Self {
-            buffer_duration: Duration::from_millis(200),
+            buffer_duration: Duration::from_millis(250),
         }
     }
 }
@@ -548,7 +555,7 @@ impl<T: DecalSample + Default + 'static, B: AudioBackend> AudioOutput<T, B> {
             return Ok(());
         }
 
-        let stream = self.create_stream(self.ring_buf.consumer())?;
+        let mut stream = self.create_stream(self.ring_buf.consumer())?;
         stream.play().unwrap();
         self.stream = Some(stream);
 
@@ -556,7 +563,7 @@ impl<T: DecalSample + Default + 'static, B: AudioBackend> AudioOutput<T, B> {
     }
 
     pub fn stop(&mut self) {
-        if let Some(s) = self.stream.as_ref() {
+        if let Some(s) = self.stream.as_mut() {
             s.stop().unwrap()
         }
         self.stream = None;
@@ -613,7 +620,7 @@ impl<T: DecalSample + Default + 'static, B: AudioBackend> AudioOutput<T, B> {
     }
 
     fn create_stream(
-        &self,
+        &mut self,
         ring_buf_consumer: rb::Consumer<T>,
     ) -> Result<Box<dyn Stream>, AudioOutputError> {
         let channels = self.config.channels;
@@ -629,7 +636,7 @@ impl<T: DecalSample + Default + 'static, B: AudioBackend> AudioOutput<T, B> {
         let filler = T::EQUILIBRIUM;
         let on_error = self.on_error.clone();
         let on_configuration_changed = self.on_configuration_changed.clone();
-        let stream = self
+        let mut stream = self
             .device
             .build_output_stream(
                 &config,
@@ -651,8 +658,14 @@ impl<T: DecalSample + Default + 'static, B: AudioBackend> AudioOutput<T, B> {
                     StreamError::BackendSpecific(err) => {
                         on_error(err);
                     }
+                    StreamError::InputOverflow => {
+                        warn!("input overflow")
+                    }
                     StreamError::BufferUnderrun => {
                         warn!("buffer underrun");
+                    }
+                    StreamError::InvalidConfiguration(err) => {
+                        error!("invalid configuration: {err}")
                     }
                 },
             )

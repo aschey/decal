@@ -11,6 +11,7 @@ cpal = { version = "0.17.1", features = [
 ], optional = true }
 cubeb = { version = "0.34", optional = true }
 cubeb-core = { version = "0.34", optional = true }
+rtaudio = { version = "0.8", optional = true }
 dasp = { version = "0.11", optional = true }
 rb = { version = "0.4", optional = true }
 rubato = { version = "1.0.1", optional = true }
@@ -37,7 +38,8 @@ tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
 [features]
 output = ["dep:rb"]
 output-cpal = ["output", "dep:cpal"]
-output-cubeb = ["output", "cubeb", "cubeb-core", "windows-sys"]
+output-cubeb = ["output", "dep:cubeb", "dep:cubeb-core", "dep:windows-sys"]
+output-rtaudio = ["output", "dep:rtaudio"]
 decoder = [
   "dep:symphonia",
   "dep:dasp",
@@ -77,3 +79,7 @@ default = ["decoder-all", "output-cpal", "mock"]
 [[example]]
 name = "cubeb"
 required-features = ["output-cubeb"]
+
+[[example]]
+name = "rtaudio"
+required-features = ["rtaudio"]

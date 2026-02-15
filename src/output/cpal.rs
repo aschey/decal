@@ -28,12 +28,12 @@ impl Iterator for CpalDevices {
 pub struct CpalStream(cpal::Stream);
 
 impl Stream for CpalStream {
-    fn play(&self) -> Result<(), PlayStreamError> {
+    fn play(&mut self) -> Result<(), PlayStreamError> {
         self.0.play().unwrap();
         Ok(())
     }
 
-    fn stop(&self) -> Result<(), PlayStreamError> {
+    fn stop(&mut self) -> Result<(), PlayStreamError> {
         Ok(())
     }
 }
@@ -109,7 +109,7 @@ impl Device for CpalDevice {
     }
 
     fn build_output_stream<T, D, E>(
-        &self,
+        &mut self,
         config: &StreamConfig,
         mut data_callback: D,
         mut error_callback: E,

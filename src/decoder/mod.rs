@@ -162,6 +162,7 @@ pub struct Decoder<T: Sample + dasp::sample::Sample> {
     num_frames: Option<u64>,
     seek_required_ts: Option<Timestamp>,
     settings: DecoderSettings,
+    frame_position: usize,
 }
 
 fn create_decoder(
@@ -238,6 +239,7 @@ where
             seek_required_ts: None,
             num_frames,
             settings,
+            frame_position: 0,
         };
         decoder.initialize()?;
 
@@ -368,7 +370,7 @@ where
             if !self.settings.enable_gapless {
                 break;
             }
-            if let Some(mut index) = self.current().iter().position(|s| *s != T::MID) {
+            if let Some(mut index) = self.current(None).iter().position(|s| *s != T::MID) {
                 // Edge case: if the first non-silent sample is on an odd-numbered index, we'll
                 // start on the wrong channel.
                 // This only matters for stereo outputs.
@@ -482,14 +484,23 @@ where
         Ok(())
     }
 
-    pub(crate) fn current(&self) -> &[T] {
-        &self.buf[..self.buf_len]
+    pub(crate) fn current(&mut self, len: Option<usize>) -> &[T] {
+        if let Some(len) = len {
+            let max_len = self.buf_len - self.frame_position;
+            let len = len.min(max_len);
+            let position = self.frame_position;
+            self.frame_position += len;
+            &self.buf[..self.buf_len][position..position + len]
+        } else {
+            &self.buf[..self.buf_len]
+        }
     }
 
-    pub(crate) fn next(&mut self) -> Result<Option<&[T]>, DecoderError> {
+    pub(crate) fn next(&mut self) -> Result<DecoderResult, DecoderError> {
         if self.is_paused {
             self.buf.fill(T::MID);
         } else {
+            self.frame_position = 0;
             loop {
                 let packet = loop {
                     match self.reader.next_packet() {
@@ -506,11 +517,11 @@ where
                             }
                         }
                         Ok(None) => {
-                            return Ok(None);
+                            return Ok(DecoderResult::Finished);
                         }
                         Err(Error::ResetRequired) => {
                             self.handle_reset()?;
-                            return Ok(Some(self.current()));
+                            return Ok(DecoderResult::Unfinished);
                         }
                         Err(e) => {
                             error!("Error reading next packet: {e:?}");
@@ -532,6 +543,6 @@ where
                 }
             }
         }
-        Ok(Some(self.current()))
+        Ok(DecoderResult::Unfinished)
     }
 }

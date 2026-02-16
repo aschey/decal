@@ -81,8 +81,8 @@ fn main() -> Result<(), Box<dyn Error>> {
                 resampled.initialize(&mut decoder)?;
 
                 // Pre-fill output buffer before starting the stream
-                while resampled.current(&decoder).len() <= output.buffer_space_available() {
-                    output.write(resampled.current(&decoder)).unwrap();
+                while resampled.current(&mut decoder).len() <= output.buffer_space_available() {
+                    output.write(resampled.current(&mut decoder)).unwrap();
                     if resampled.decode_next_frame(&mut decoder)? == DecoderResult::Finished {
                         break;
                     }
@@ -103,7 +103,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                     break false;
                 }
 
-                output.write_blocking(resampled.current(&decoder)).ok();
+                output.write_blocking(resampled.current(&mut decoder)).ok();
                 match resampled.decode_next_frame(&mut decoder) {
                     Ok(DecoderResult::Finished) => break true,
                     Ok(DecoderResult::Unfinished) => {}

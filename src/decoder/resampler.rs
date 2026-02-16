@@ -1,14 +1,14 @@
-use super::{Decoder, DecoderError};
-use crate::decoder::fixed_buffer::FixedBuffer;
-use crate::{ChannelCount, SampleRate};
 use audioadapter_buffers::direct::InterleavedSlice;
 use dasp::sample::Sample as DaspSample;
 use rubato::{Fft, FixedSync, Indexing, Resampler};
 use symphonia::core::audio::conv::ConvertibleSample;
 use symphonia::core::audio::sample::Sample;
 
+use super::{Decoder, DecoderError};
+use crate::decoder::fixed_buffer::FixedBuffer;
+use crate::{ChannelCount, SampleRate};
+
 struct ResampleDecoderInner<T: Sample + DaspSample> {
-    frame_position: usize,
     channels: usize,
     resampler: Fft<T>,
     in_buf: FixedBuffer<T>,
@@ -23,28 +23,18 @@ pub enum DecoderResult {
 
 impl<T: Sample + DaspSample + ConvertibleSample + rubato::Sample> ResampleDecoderInner<T> {
     fn next(&mut self, decoder: &mut Decoder<T>) -> Result<DecoderResult, DecoderError> {
-        let mut cur_frame = decoder.current();
-
         let input_samples_left = self.resampler.input_frames_next() * self.channels;
         while self.in_buf.position() < input_samples_left {
-            let to_write = (cur_frame.len() - self.frame_position)
-                .min(input_samples_left)
-                .min(self.in_buf.remaining());
-            self.in_buf
-                .append_from_slice(&cur_frame[self.frame_position..self.frame_position + to_write]);
-            self.frame_position += to_write;
-
-            if self.frame_position == cur_frame.len() {
-                self.frame_position = 0;
-                match decoder.next()? {
-                    Some(next) => {
-                        cur_frame = next;
-                    }
-                    None => {
-                        return Ok(DecoderResult::Finished);
-                    }
+            let to_write = input_samples_left.min(self.in_buf.remaining());
+            let current_slice = decoder.current(Some(to_write));
+            if current_slice.is_empty() {
+                if decoder.next()? == DecoderResult::Finished {
+                    return Ok(DecoderResult::Finished);
+                } else {
+                    continue;
                 }
             }
+            self.in_buf.append_from_slice(current_slice);
         }
 
         let (input_adapter, mut output_adapter) = create_adapters(
@@ -194,7 +184,6 @@ impl<T: Sample + DaspSample + ConvertibleSample + rubato::Sample> ResampledDecod
             channels: self.channels.0 as usize,
             in_buf: FixedBuffer::new(T::MID, n_frames_in * self.channels.0 as usize),
             out_buf: vec![T::MID; n_frames_out * self.channels.0 as usize],
-            frame_position: 0,
             resampler,
         });
         self.decoder_inner = resampler;
@@ -208,10 +197,10 @@ impl<T: Sample + DaspSample + ConvertibleSample + rubato::Sample> ResampledDecod
         self.out_sample_rate
     }
 
-    pub fn current<'a>(&'a self, decoder: &'a Decoder<T>) -> &'a [T] {
+    pub fn current<'a>(&'a self, decoder: &'a mut Decoder<T>) -> &'a [T] {
         match &self.decoder_inner {
             ResampledDecoderImpl::Resampled(decoder_inner) => decoder_inner.current(),
-            ResampledDecoderImpl::Native => decoder.current(),
+            ResampledDecoderImpl::Native => decoder.current(None),
         }
     }
 
@@ -228,10 +217,7 @@ impl<T: Sample + DaspSample + ConvertibleSample + rubato::Sample> ResampledDecod
     ) -> Result<DecoderResult, DecoderError> {
         match &mut self.decoder_inner {
             ResampledDecoderImpl::Resampled(decoder_inner) => decoder_inner.next(decoder),
-            ResampledDecoderImpl::Native => Ok(match decoder.next()? {
-                Some(_) => DecoderResult::Unfinished,
-                None => DecoderResult::Finished,
-            }),
+            ResampledDecoderImpl::Native => Ok(decoder.next()?),
         }
     }
 }

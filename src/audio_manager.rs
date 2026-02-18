@@ -118,6 +118,27 @@ where
         Ok(decoder)
     }
 
+    fn rebuild_output(&mut self) -> Result<(), AudioOutputError> {
+        self.output = self
+            .output_builder
+            .new_output(self.device_name.clone(), self.output_config.clone())?;
+        Ok(())
+    }
+
+    pub fn reset_output(&mut self) -> Result<(), ResetError> {
+        let new_output_config = self.output_builder.find_closest_config(
+            self.device_name.as_deref(),
+            RequestedOutputConfig {
+                sample_rate: Some(self.output_config.sample_rate),
+                channels: Some(self.output_config.channels),
+                sample_format: Some(<T as DecalSample>::FORMAT),
+            },
+        )?;
+        self.output_config = new_output_config;
+        self.rebuild_output()?;
+        Ok(())
+    }
+
     pub fn reset(&mut self, decoder: &mut Decoder<T>, mode: ResetMode) -> Result<(), ResetError> {
         let new_output_config = self.output_builder.find_closest_config(
             self.device_name.as_deref(),
@@ -146,9 +167,7 @@ where
         }
 
         if output_config_changed {
-            self.output = self
-                .output_builder
-                .new_output(self.device_name.clone(), self.output_config.clone())?;
+            self.rebuild_output()?;
         }
         self.flush()?;
 
@@ -161,7 +180,7 @@ where
             );
         }
         self.resampled.initialize(decoder)?;
-        
+
         // Pre-fill output buffer before starting the stream
         while self.resampled.current(decoder).len() <= self.output.buffer_space_available() {
             self.output.write(self.resampled.current(decoder)).unwrap();

@@ -270,7 +270,7 @@ pub trait Device {
 
 pub trait Host: Default + Send + Sync + 'static {
     type Device: Device;
-    type Id;
+    type Id: Send + Sync;
     type Devices: Iterator<Item = Self::Device>;
 
     fn from_id(id: Self::Id) -> Result<Self, HostUnavailableError>;

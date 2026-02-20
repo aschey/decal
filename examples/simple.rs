@@ -3,7 +3,7 @@ use std::path::Path;
 
 use decal::AudioManager;
 use decal::decoder::{DecoderSettings, ReadSeekSource, ResamplerSettings};
-use decal::output::{CpalOutput, OutputBuilder, OutputSettings};
+use decal::output::{CpalHost, OutputBuilder, OutputSettings};
 use tracing::error;
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -13,7 +13,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         .init();
 
     let output_builder = OutputBuilder::new(
-        CpalOutput::default(),
+        CpalHost::default(),
         OutputSettings::default(),
         || {},
         |err| error!("Output error: {err}"),

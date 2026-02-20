@@ -10,7 +10,7 @@ use crate::decoder::{
     Source,
 };
 use crate::output::{
-    AudioBackend, AudioOutput, AudioOutputError, DecalSample, OutputBuilder, RequestedOutputConfig,
+    AudioOutput, AudioOutputError, DecalSample, Host, OutputBuilder, RequestedOutputConfig,
     SupportedStreamConfig, WriteBlockingError,
 };
 
@@ -32,10 +32,10 @@ pub enum ResetError {
     DecoderError(#[from] DecoderError),
 }
 
-pub struct AudioManager<T: Sample + DaspSample, B: AudioBackend> {
-    output_builder: OutputBuilder<B>,
+pub struct AudioManager<T: Sample + DaspSample, H: Host> {
+    output_builder: OutputBuilder<H>,
     output_config: SupportedStreamConfig,
-    output: AudioOutput<T, B>,
+    output: AudioOutput<T, H>,
     resampled: ResampledDecoder<T>,
     device_name: Option<String>,
     resampler_settings: ResamplerSettings,
@@ -48,13 +48,13 @@ pub enum ResetMode {
     Default,
 }
 
-impl<T, B> AudioManager<T, B>
+impl<T, H> AudioManager<T, H>
 where
     T: Sample + DecalSample + ConvertibleSample + rubato::Sample + Send,
-    B: AudioBackend,
+    H: Host,
 {
     pub fn new(
-        output_builder: OutputBuilder<B>,
+        output_builder: OutputBuilder<H>,
         resampler_settings: ResamplerSettings,
     ) -> Result<Self, ResetError> {
         let default_output_config = output_builder.default_output_config()?;
@@ -67,7 +67,7 @@ where
             },
         )?;
 
-        let output: AudioOutput<T, B> =
+        let output: AudioOutput<T, H> =
             output_builder.new_output::<T>(None, output_config.clone())?;
 
         let resampled = ResampledDecoder::<T>::new(

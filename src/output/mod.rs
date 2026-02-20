@@ -268,20 +268,11 @@ pub trait Device {
         E: FnMut(StreamError) + Clone + Send + Sync + 'static;
 }
 
-pub trait Host {
+pub trait Host: Send + Sync + 'static {
     type Device: Device;
     type Devices: Iterator<Item = Self::Device>;
     fn default_output_device(&self) -> Option<Self::Device>;
     fn output_devices(&self) -> Result<Self::Devices, DevicesError>;
-}
-
-pub trait AudioBackend: Clone {
-    type Host: Host<Device = Self::Device> + Send + Sync + 'static;
-    type HostId;
-    type Device: Device;
-
-    fn default_host(&self) -> Self::Host;
-    fn host_from_id(&self, id: Self::HostId) -> Result<Self::Host, HostUnavailableError>;
 }
 
 #[derive(Debug, Error)]
@@ -327,15 +318,15 @@ pub enum WriteBlockingError {
     OutputStalled,
 }
 
-pub struct OutputBuilder<B: AudioBackend> {
-    host: Arc<B::Host>,
+pub struct OutputBuilder<H: Host> {
+    host: Arc<H>,
     on_configuration_changed: Arc<Box<dyn Fn() + Send + Sync>>,
     on_error: Arc<Box<dyn Fn(BackendSpecificError) + Send + Sync>>,
     current_device: Arc<RwLock<Option<String>>>,
     settings: OutputSettings,
 }
 
-impl<B: AudioBackend> Clone for OutputBuilder<B> {
+impl<H: Host> Clone for OutputBuilder<H> {
     fn clone(&self) -> Self {
         Self {
             host: self.host.clone(),
@@ -347,36 +338,9 @@ impl<B: AudioBackend> Clone for OutputBuilder<B> {
     }
 }
 
-impl<B: AudioBackend> OutputBuilder<B> {
+impl<H: Host> OutputBuilder<H> {
     pub fn new<F1, F2>(
-        backend: B,
-        settings: OutputSettings,
-        on_configuration_changed: F1,
-        on_error: F2,
-    ) -> Self
-    where
-        B: AudioBackend,
-        F1: Fn() + Send + Sync + 'static,
-        F2: Fn(BackendSpecificError) + Send + Sync + 'static,
-    {
-        Self::new_from_host(
-            backend.default_host(),
-            settings,
-            on_configuration_changed,
-            on_error,
-        )
-    }
-
-    pub fn settings(&self) -> &OutputSettings {
-        &self.settings
-    }
-
-    pub fn set_settings(&mut self, settings: OutputSettings) {
-        self.settings = settings;
-    }
-
-    pub fn new_from_host<F1, F2>(
-        host: B::Host,
+        host: H,
         settings: OutputSettings,
         on_configuration_changed: F1,
         on_error: F2,
@@ -426,6 +390,14 @@ impl<B: AudioBackend> OutputBuilder<B> {
 
         #[allow(clippy::let_and_return)]
         builder
+    }
+
+    pub fn settings(&self) -> &OutputSettings {
+        &self.settings
+    }
+
+    pub fn set_settings(&mut self, settings: OutputSettings) {
+        self.settings = settings;
     }
 
     pub fn default_output_config(&self) -> Result<SupportedStreamConfig, AudioOutputError> {
@@ -486,11 +458,11 @@ impl<B: AudioBackend> OutputBuilder<B> {
         Ok(default_config)
     }
 
-    pub fn default_output_device(&self) -> Option<B::Device> {
+    pub fn default_output_device(&self) -> Option<H::Device> {
         self.host.default_output_device()
     }
 
-    pub fn output_devices(&self) -> Result<<B::Host as Host>::Devices, DevicesError> {
+    pub fn output_devices(&self) -> Result<H::Devices, DevicesError> {
         self.host.output_devices()
     }
 
@@ -498,7 +470,7 @@ impl<B: AudioBackend> OutputBuilder<B> {
         &self,
         device_name: Option<String>,
         config: SupportedStreamConfig,
-    ) -> Result<AudioOutput<T, B>, AudioOutputError> {
+    ) -> Result<AudioOutput<T, H>, AudioOutputError> {
         *self.current_device.write().expect("lock poisoned") = device_name.clone();
         let default_device = self
             .host
@@ -520,7 +492,7 @@ impl<B: AudioBackend> OutputBuilder<B> {
         info!("Using device: {:?}", device.name());
         info!("Device config: {config:?}");
 
-        Ok(AudioOutput::<T, B>::new(
+        Ok(AudioOutput::<T, H>::new(
             device,
             config,
             self.on_configuration_changed.clone(),
@@ -530,20 +502,20 @@ impl<B: AudioBackend> OutputBuilder<B> {
     }
 }
 
-pub struct AudioOutput<T, B: AudioBackend> {
+pub struct AudioOutput<T, H: Host> {
     ring_buf_producer: rb::Producer<T>,
     ring_buf: SpscRb<T>,
     stream: Option<Box<dyn Stream>>,
     on_configuration_changed: Arc<Box<dyn Fn() + Send + Sync>>,
     on_error: Arc<Box<dyn Fn(BackendSpecificError) + Send + Sync>>,
-    device: B::Device,
+    device: H::Device,
     config: SupportedStreamConfig,
     settings: OutputSettings,
 }
 
-impl<T: DecalSample + Default + 'static, B: AudioBackend> AudioOutput<T, B> {
+impl<T: DecalSample + Default + 'static, H: Host> AudioOutput<T, H> {
     pub(crate) fn new(
-        device: B::Device,
+        device: H::Device,
         config: SupportedStreamConfig,
         on_configuration_changed: Arc<Box<dyn Fn() + Send + Sync>>,
         on_error: Arc<Box<dyn Fn(BackendSpecificError) + Send + Sync>>,
@@ -610,7 +582,7 @@ impl<T: DecalSample + Default + 'static, B: AudioBackend> AudioOutput<T, B> {
         &self.settings
     }
 
-    pub fn device(&self) -> &B::Device {
+    pub fn device(&self) -> &H::Device {
         &self.device
     }
 

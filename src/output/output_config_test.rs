@@ -1,6 +1,6 @@
 use std::vec;
 
-use super::{MockDevice, MockHost, MockOutput, OutputBuilder, RequestedOutputConfig};
+use super::{MockDevice, MockHost, OutputBuilder, RequestedOutputConfig};
 use crate::{
     ChannelCount,
     output::{SampleFormat, SampleRate, SupportedBufferSize, SupportedStreamConfig},
@@ -9,22 +9,20 @@ use crate::{
 #[test]
 fn find_closest_config_default() {
     let output_builder = OutputBuilder::new(
-        MockOutput {
-            default_host: MockHost {
-                default_device: MockDevice::new(
-                    "test-device".to_owned(),
-                    SupportedStreamConfig {
-                        channels: ChannelCount(2),
-                        sample_rate: SampleRate(44100),
-                        buffer_size: SupportedBufferSize::Range { min: 0, max: 9999 },
-                        sample_format: SampleFormat::F32,
-                    },
-                    SampleRate(1024),
-                    SampleRate(192000),
-                    vec![],
-                ),
-                additional_devices: vec![],
-            },
+        MockHost {
+            default_device: MockDevice::new(
+                "test-device".to_owned(),
+                SupportedStreamConfig {
+                    channels: ChannelCount(2),
+                    sample_rate: SampleRate(44100),
+                    buffer_size: SupportedBufferSize::Range { min: 0, max: 9999 },
+                    sample_format: SampleFormat::F32,
+                },
+                SampleRate(1024),
+                SampleRate(192000),
+                vec![],
+            ),
+            additional_devices: vec![],
         },
         Default::default(),
         move || {},
@@ -53,22 +51,20 @@ fn find_closest_config_default() {
 #[test]
 fn find_closest_config_sample_rate() {
     let output_builder = OutputBuilder::new(
-        MockOutput {
-            default_host: MockHost {
-                default_device: MockDevice::new(
-                    "test-device".to_owned(),
-                    SupportedStreamConfig {
-                        channels: ChannelCount(2),
-                        sample_rate: SampleRate(44100),
-                        buffer_size: SupportedBufferSize::Range { min: 0, max: 9999 },
-                        sample_format: SampleFormat::F32,
-                    },
-                    SampleRate(1024),
-                    SampleRate(192000),
-                    vec![],
-                ),
-                additional_devices: vec![],
-            },
+        MockHost {
+            default_device: MockDevice::new(
+                "test-device".to_owned(),
+                SupportedStreamConfig {
+                    channels: ChannelCount(2),
+                    sample_rate: SampleRate(44100),
+                    buffer_size: SupportedBufferSize::Range { min: 0, max: 9999 },
+                    sample_format: SampleFormat::F32,
+                },
+                SampleRate(1024),
+                SampleRate(192000),
+                vec![],
+            ),
+            additional_devices: vec![],
         },
         Default::default(),
         move || {},
@@ -97,33 +93,31 @@ fn find_closest_config_sample_rate() {
 #[test]
 fn find_closest_config_channel_mismatch() {
     let output_builder = OutputBuilder::new(
-        MockOutput {
-            default_host: MockHost {
-                default_device: MockDevice::new(
-                    "test-device".to_owned(),
-                    SupportedStreamConfig {
-                        channels: ChannelCount(2),
-                        sample_rate: SampleRate(44100),
-                        buffer_size: SupportedBufferSize::Range { min: 0, max: 9999 },
-                        sample_format: SampleFormat::F32,
-                    },
-                    SampleRate(1024),
-                    SampleRate(192000),
-                    vec![],
-                ),
-                additional_devices: vec![MockDevice::new(
-                    "second-device".to_owned(),
-                    SupportedStreamConfig {
-                        channels: ChannelCount(1),
-                        sample_rate: SampleRate(48000),
-                        buffer_size: SupportedBufferSize::Range { min: 0, max: 9999 },
-                        sample_format: SampleFormat::F32,
-                    },
-                    SampleRate(1024),
-                    SampleRate(192000),
-                    vec![],
-                )],
-            },
+        MockHost {
+            default_device: MockDevice::new(
+                "test-device".to_owned(),
+                SupportedStreamConfig {
+                    channels: ChannelCount(2),
+                    sample_rate: SampleRate(44100),
+                    buffer_size: SupportedBufferSize::Range { min: 0, max: 9999 },
+                    sample_format: SampleFormat::F32,
+                },
+                SampleRate(1024),
+                SampleRate(192000),
+                vec![],
+            ),
+            additional_devices: vec![MockDevice::new(
+                "second-device".to_owned(),
+                SupportedStreamConfig {
+                    channels: ChannelCount(1),
+                    sample_rate: SampleRate(48000),
+                    buffer_size: SupportedBufferSize::Range { min: 0, max: 9999 },
+                    sample_format: SampleFormat::F32,
+                },
+                SampleRate(1024),
+                SampleRate(192000),
+                vec![],
+            )],
         },
         Default::default(),
         move || {},
@@ -152,33 +146,31 @@ fn find_closest_config_channel_mismatch() {
 #[test]
 fn find_closest_config_sample_rate_mismatch() {
     let output_builder = OutputBuilder::new(
-        MockOutput {
-            default_host: MockHost {
-                default_device: MockDevice::new(
-                    "test-device".to_owned(),
-                    SupportedStreamConfig {
-                        channels: ChannelCount(2),
-                        sample_rate: SampleRate(44100),
-                        buffer_size: SupportedBufferSize::Range { min: 0, max: 9999 },
-                        sample_format: SampleFormat::F32,
-                    },
-                    SampleRate(44100),
-                    SampleRate(44100),
-                    vec![],
-                ),
-                additional_devices: vec![MockDevice::new(
-                    "second-device".to_owned(),
-                    SupportedStreamConfig {
-                        channels: ChannelCount(1),
-                        sample_rate: SampleRate(48000),
-                        buffer_size: SupportedBufferSize::Range { min: 0, max: 9999 },
-                        sample_format: SampleFormat::F32,
-                    },
-                    SampleRate(1024),
-                    SampleRate(192000),
-                    vec![],
-                )],
-            },
+        MockHost {
+            default_device: MockDevice::new(
+                "test-device".to_owned(),
+                SupportedStreamConfig {
+                    channels: ChannelCount(2),
+                    sample_rate: SampleRate(44100),
+                    buffer_size: SupportedBufferSize::Range { min: 0, max: 9999 },
+                    sample_format: SampleFormat::F32,
+                },
+                SampleRate(44100),
+                SampleRate(44100),
+                vec![],
+            ),
+            additional_devices: vec![MockDevice::new(
+                "second-device".to_owned(),
+                SupportedStreamConfig {
+                    channels: ChannelCount(1),
+                    sample_rate: SampleRate(48000),
+                    buffer_size: SupportedBufferSize::Range { min: 0, max: 9999 },
+                    sample_format: SampleFormat::F32,
+                },
+                SampleRate(1024),
+                SampleRate(192000),
+                vec![],
+            )],
         },
         Default::default(),
         move || {},
@@ -207,33 +199,31 @@ fn find_closest_config_sample_rate_mismatch() {
 #[test]
 fn find_closest_config_non_default_device() {
     let output_builder = OutputBuilder::new(
-        MockOutput {
-            default_host: MockHost {
-                default_device: MockDevice::new(
-                    "test-device".to_owned(),
-                    SupportedStreamConfig {
-                        channels: ChannelCount(2),
-                        sample_rate: SampleRate(44100),
-                        buffer_size: SupportedBufferSize::Range { min: 0, max: 9999 },
-                        sample_format: SampleFormat::F32,
-                    },
-                    SampleRate(1024),
-                    SampleRate(192000),
-                    vec![],
-                ),
-                additional_devices: vec![MockDevice::new(
-                    "second-device".to_owned(),
-                    SupportedStreamConfig {
-                        channels: ChannelCount(2),
-                        sample_rate: SampleRate(48000),
-                        buffer_size: SupportedBufferSize::Range { min: 0, max: 9999 },
-                        sample_format: SampleFormat::F32,
-                    },
-                    SampleRate(1024),
-                    SampleRate(192000),
-                    vec![],
-                )],
-            },
+        MockHost {
+            default_device: MockDevice::new(
+                "test-device".to_owned(),
+                SupportedStreamConfig {
+                    channels: ChannelCount(2),
+                    sample_rate: SampleRate(44100),
+                    buffer_size: SupportedBufferSize::Range { min: 0, max: 9999 },
+                    sample_format: SampleFormat::F32,
+                },
+                SampleRate(1024),
+                SampleRate(192000),
+                vec![],
+            ),
+            additional_devices: vec![MockDevice::new(
+                "second-device".to_owned(),
+                SupportedStreamConfig {
+                    channels: ChannelCount(2),
+                    sample_rate: SampleRate(48000),
+                    buffer_size: SupportedBufferSize::Range { min: 0, max: 9999 },
+                    sample_format: SampleFormat::F32,
+                },
+                SampleRate(1024),
+                SampleRate(192000),
+                vec![],
+            )],
         },
         Default::default(),
         move || {},

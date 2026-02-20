@@ -38,6 +38,7 @@ tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
 [features]
 output = ["dep:rb"]
 output-cpal = ["output", "dep:cpal"]
+cpal-pulseaudio = ["output-cpal", "cpal/pulseaudio"]
 output-cubeb = ["output", "dep:cubeb", "dep:cubeb-core", "dep:windows-sys"]
 output-rtaudio = ["output", "dep:rtaudio"]
 decoder = [

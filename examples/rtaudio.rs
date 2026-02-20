@@ -1,11 +1,9 @@
-
-
 use std::error::Error;
 use std::path::Path;
 
 use decal::AudioManager;
 use decal::decoder::{DecoderSettings, ReadSeekSource, ResamplerSettings};
-use decal::output::{RtAudioOutput, OutputBuilder, OutputSettings};
+use decal::output::{OutputBuilder, OutputSettings, RtAudioHost};
 use tracing::error;
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -15,7 +13,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         .init();
 
     let output_builder = OutputBuilder::new(
-        RtAudioOutput::default(),
+        RtAudioHost::default(),
         OutputSettings::default(),
         || {},
         |err| error!("Output error: {err}"),

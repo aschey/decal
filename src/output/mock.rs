@@ -4,8 +4,8 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 
 use super::{
-    AudioBackend, BuildStreamError, DecalSample, DefaultStreamConfigError, Device, DeviceNameError,
-    DevicesError, Host, PlayStreamError, Stream, StreamConfig, StreamError, SupportedStreamConfig,
+    BuildStreamError, DecalSample, DefaultStreamConfigError, Device, DeviceNameError, DevicesError,
+    Host, PlayStreamError, Stream, StreamConfig, StreamError, SupportedStreamConfig,
     SupportedStreamConfigRange, SupportedStreamConfigsError,
 };
 use crate::SampleRate;
@@ -153,24 +153,5 @@ impl Host for MockHost {
             .concat()
             .into_iter(),
         ))
-    }
-}
-
-#[derive(Clone)]
-pub struct MockOutput {
-    pub default_host: MockHost,
-}
-
-impl AudioBackend for MockOutput {
-    type Host = MockHost;
-    type HostId = ();
-    type Device = MockDevice;
-
-    fn default_host(&self) -> Self::Host {
-        self.default_host.clone()
-    }
-
-    fn host_from_id(&self, _id: Self::HostId) -> Result<Self::Host, super::HostUnavailableError> {
-        Ok(self.default_host())
     }
 }

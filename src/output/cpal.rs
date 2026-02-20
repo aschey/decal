@@ -1,17 +1,26 @@
 use cpal::traits::{DeviceTrait as _, HostTrait as _, StreamTrait as _};
 
 use super::{
-    AudioBackend, BackendSpecificError, BufferSize, BuildStreamError, DecalSample,
-    DefaultStreamConfigError, Device, DeviceNameError, DevicesError, Host, PlayStreamError,
-    SampleFormat, Stream, StreamConfig, StreamError, SupportedBufferSize, SupportedStreamConfig,
+    BackendSpecificError, BufferSize, BuildStreamError, DecalSample, DefaultStreamConfigError,
+    Device, DeviceNameError, DevicesError, Host, PlayStreamError, SampleFormat, Stream,
+    StreamConfig, StreamError, SupportedBufferSize, SupportedStreamConfig,
     SupportedStreamConfigRange, SupportedStreamConfigsError,
 };
 use crate::{ChannelCount, SampleRate, output::HostUnavailableError};
 
-#[derive(Default, Clone)]
-pub struct CpalOutput {}
-
 pub struct CpalHost(cpal::Host);
+
+impl Default for CpalHost {
+    fn default() -> Self {
+        Self(cpal::default_host())
+    }
+}
+
+impl CpalHost {
+    pub fn host_from_id(id: cpal::HostId) -> Result<Self, HostUnavailableError> {
+        Ok(cpal::host_from_id(id).map(CpalHost).unwrap())
+    }
+}
 
 pub struct CpalDevice(cpal::Device);
 
@@ -175,19 +184,5 @@ impl Host for CpalHost {
 
     fn output_devices(&self) -> Result<Self::Devices, DevicesError> {
         Ok(CpalDevices(self.0.output_devices().unwrap()))
-    }
-}
-
-impl AudioBackend for CpalOutput {
-    type Host = CpalHost;
-    type Device = CpalDevice;
-    type HostId = cpal::HostId;
-
-    fn default_host(&self) -> Self::Host {
-        CpalHost(cpal::default_host())
-    }
-
-    fn host_from_id(&self, id: Self::HostId) -> Result<Self::Host, HostUnavailableError> {
-        Ok(cpal::host_from_id(id).map(CpalHost).unwrap())
     }
 }

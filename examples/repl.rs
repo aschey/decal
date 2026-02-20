@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use crossterm::style::Stylize;
 use decal::decoder::{DecoderResult, DecoderSettings, ReadSeekSource, ResamplerSettings};
-use decal::output::{AudioBackend, CpalOutput, OutputBuilder, OutputSettings, WriteBlockingError};
+use decal::output::{CpalHost, Host, OutputBuilder, OutputSettings, WriteBlockingError};
 use decal::{AudioManager, ResetMode, WriteOutputError};
 use reedline::{
     Color, ColumnarMenu, DefaultCompleter, DefaultPrompt, Emacs, KeyCode, KeyModifiers,
@@ -94,7 +94,7 @@ fn main() -> io::Result<()> {
     let (command_tx, command_rx) = mpsc::sync_channel(32);
     let command_tx_ = command_tx.clone();
     let output_builder = OutputBuilder::new(
-        CpalOutput::default(),
+        CpalHost::default(),
         OutputSettings::default(),
         move || {
             command_tx_.send(Command::Reset).unwrap();
@@ -154,8 +154,8 @@ fn main() -> io::Result<()> {
     }
 }
 
-fn event_loop<B: AudioBackend>(
-    output_builder: OutputBuilder<B>,
+fn event_loop<H: Host>(
+    output_builder: OutputBuilder<H>,
     queue_rx: mpsc::Receiver<String>,
     command_rx: mpsc::Receiver<Command>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {

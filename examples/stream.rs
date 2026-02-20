@@ -2,7 +2,7 @@ use std::error::Error;
 
 use decal::AudioManager;
 use decal::decoder::{DecoderResult, DecoderSettings, ReadSeekSource, ResamplerSettings};
-use decal::output::{CpalOutput, OutputBuilder, OutputSettings};
+use decal::output::{CpalHost, OutputBuilder, OutputSettings};
 use stream_download::http::HttpStream;
 use stream_download::http::reqwest::Client;
 use stream_download::source::{DecodeError, SourceStream};
@@ -21,7 +21,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         .init();
 
     let output_builder = OutputBuilder::new(
-        CpalOutput::default(),
+        CpalHost::default(),
         OutputSettings::default(),
         || {},
         |err| error!("Output error: {err}"),

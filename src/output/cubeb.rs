@@ -10,8 +10,8 @@ use cubeb_core::DevicePref;
 use crate::ChannelCount;
 
 use super::{
-    AudioBackend, DecalSample, DefaultStreamConfigError, Device, Host, SampleFormat, SampleRate,
-    Stream, StreamConfig, StreamError, SupportedBufferSize, SupportedStreamConfig,
+    DecalSample, DefaultStreamConfigError, Device, Host, SampleFormat, SampleRate, Stream,
+    StreamConfig, StreamError, SupportedBufferSize, SupportedStreamConfig,
     SupportedStreamConfigRange,
 };
 
@@ -287,6 +287,7 @@ impl<T> Stream for CubebStream<T> {
     }
 }
 
+#[derive(Default)]
 pub struct CubebHost {}
 
 impl Host for CubebHost {
@@ -317,22 +318,5 @@ impl Host for CubebHost {
                 .collect()
         });
         Ok(Box::new(devices.into_iter()))
-    }
-}
-
-#[derive(Clone, Default)]
-pub struct CubebOutput {}
-
-impl AudioBackend for CubebOutput {
-    type Host = CubebHost;
-    type Device = CubebDevice;
-    type HostId = ();
-
-    fn default_host(&self) -> Self::Host {
-        CubebHost {}
-    }
-
-    fn host_from_id(&self, _id: Self::HostId) -> Result<Self::Host, super::HostUnavailableError> {
-        Ok(self.default_host())
     }
 }

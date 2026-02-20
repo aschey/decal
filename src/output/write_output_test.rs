@@ -1,6 +1,6 @@
 use std::vec;
 
-use super::{MockDevice, MockHost, MockOutput, OutputBuilder};
+use super::{MockDevice, MockHost, OutputBuilder};
 use crate::{
     ChannelCount,
     output::{SampleFormat, SampleRate, SupportedBufferSize, SupportedStreamConfig},
@@ -9,22 +9,20 @@ use crate::{
 #[test]
 fn test_write_output() {
     let output_builder = OutputBuilder::new(
-        MockOutput {
-            default_host: MockHost {
-                default_device: MockDevice::new(
-                    "test-device".to_owned(),
-                    SupportedStreamConfig {
-                        channels: ChannelCount(2),
-                        sample_rate: SampleRate(44100),
-                        buffer_size: SupportedBufferSize::Range { min: 0, max: 9999 },
-                        sample_format: SampleFormat::F32,
-                    },
-                    SampleRate(1024),
-                    SampleRate(192000),
-                    vec![],
-                ),
-                additional_devices: vec![],
-            },
+        MockHost {
+            default_device: MockDevice::new(
+                "test-device".to_owned(),
+                SupportedStreamConfig {
+                    channels: ChannelCount(2),
+                    sample_rate: SampleRate(44100),
+                    buffer_size: SupportedBufferSize::Range { min: 0, max: 9999 },
+                    sample_format: SampleFormat::F32,
+                },
+                SampleRate(1024),
+                SampleRate(192000),
+                vec![],
+            ),
+            additional_devices: vec![],
         },
         Default::default(),
         move || {},

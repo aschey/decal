@@ -5,21 +5,25 @@ use rtaudio::NativeFormats;
 use crate::{
     ChannelCount, SampleRate,
     output::{
-        AudioBackend, BuildStreamError, DecalSample, DefaultStreamConfigError, Device,
-        DeviceNameError, DevicesError, Host, PlayStreamError, SampleFormat, Stream, StreamConfig,
-        StreamError, SupportedBufferSize, SupportedStreamConfig, SupportedStreamConfigRange,
+        BuildStreamError, DecalSample, DefaultStreamConfigError, Device, DeviceNameError,
+        DevicesError, Host, PlayStreamError, SampleFormat, Stream, StreamConfig, StreamError,
+        SupportedBufferSize, SupportedStreamConfig, SupportedStreamConfigRange,
         SupportedStreamConfigsError,
     },
 };
 
+#[derive(Default)]
 pub struct RtAudioHost(rtaudio::Host);
 
 unsafe impl Send for RtAudioHost {}
 
 unsafe impl Sync for RtAudioHost {}
 
-#[derive(Clone, Default)]
-pub struct RtAudioOutput {}
+impl RtAudioHost {
+    pub fn host_from_id(&self, id: rtaudio::Api) -> Result<Self, super::HostUnavailableError> {
+        Ok(RtAudioHost(rtaudio::Host::new(id).unwrap()))
+    }
+}
 
 pub struct RtAudioStream(rtaudio::StreamHandle);
 
@@ -198,19 +202,5 @@ impl Host for RtAudioHost {
             .map(|d| RtAudioDevice(d.clone()))
             .collect();
         Ok(Box::new(devices.into_iter()))
-    }
-}
-
-impl AudioBackend for RtAudioOutput {
-    type Host = RtAudioHost;
-    type HostId = rtaudio::Api;
-    type Device = RtAudioDevice;
-
-    fn default_host(&self) -> Self::Host {
-        RtAudioHost(rtaudio::Host::default())
-    }
-
-    fn host_from_id(&self, id: Self::HostId) -> Result<Self::Host, super::HostUnavailableError> {
-        Ok(RtAudioHost(rtaudio::Host::new(id).unwrap()))
     }
 }

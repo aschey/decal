@@ -6,7 +6,7 @@ edition = "2024"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-cpal = { version = "0.17.3", features = [
+cpal = { git = "https://github.com/RustAudio/cpal", rev = "f2f92ade8bd8cf6a102ffa92fc0dd534f0221bba", features = [
   "audio_thread_priority",
 ], optional = true }
 cubeb = { version = "0.34", optional = true }

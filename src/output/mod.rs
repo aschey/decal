@@ -52,6 +52,8 @@ pub enum BuildStreamError {
     StreamIdOverflow,
     #[error("{0}")]
     BackendSpecific(BackendSpecificError),
+    #[error("{0}")]
+    Unknown(String),
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -68,6 +70,8 @@ pub enum StreamError {
     InvalidConfiguration(String),
     #[error("{0}")]
     BackendSpecific(BackendSpecificError),
+    #[error("{0}")]
+    Unknown(String),
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -273,10 +277,11 @@ pub trait Host {
 
 pub trait AudioBackend: Clone {
     type Host: Host<Device = Self::Device> + Send + Sync + 'static;
+    type HostId;
     type Device: Device;
 
     fn default_host(&self) -> Self::Host;
-    // fn host_from_id(&self, id: HostId) -> Result<Self::Host, HostUnavailableError>;
+    fn host_from_id(&self, id: Self::HostId) -> Result<Self::Host, HostUnavailableError>;
 }
 
 #[derive(Debug, Error)]
@@ -678,6 +683,9 @@ impl<T: DecalSample + Default + 'static, B: AudioBackend> AudioOutput<T, B> {
                     }
                     StreamError::InvalidConfiguration(err) => {
                         error!("invalid configuration: {err}")
+                    }
+                    e => {
+                        warn!("unknown error: {e:?}")
                     }
                 },
             )

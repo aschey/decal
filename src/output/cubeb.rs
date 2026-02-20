@@ -326,8 +326,13 @@ pub struct CubebOutput {}
 impl AudioBackend for CubebOutput {
     type Host = CubebHost;
     type Device = CubebDevice;
+    type HostId = ();
 
     fn default_host(&self) -> Self::Host {
         CubebHost {}
+    }
+
+    fn host_from_id(&self, _id: Self::HostId) -> Result<Self::Host, super::HostUnavailableError> {
+        Ok(self.default_host())
     }
 }

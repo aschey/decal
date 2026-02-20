@@ -203,9 +203,14 @@ impl Host for RtAudioHost {
 
 impl AudioBackend for RtAudioOutput {
     type Host = RtAudioHost;
+    type HostId = rtaudio::Api;
     type Device = RtAudioDevice;
 
     fn default_host(&self) -> Self::Host {
         RtAudioHost(rtaudio::Host::default())
+    }
+
+    fn host_from_id(&self, id: Self::HostId) -> Result<Self::Host, super::HostUnavailableError> {
+        Ok(RtAudioHost(rtaudio::Host::new(id).unwrap()))
     }
 }

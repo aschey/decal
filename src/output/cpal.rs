@@ -6,7 +6,7 @@ use super::{
     SampleFormat, Stream, StreamConfig, StreamError, SupportedBufferSize, SupportedStreamConfig,
     SupportedStreamConfigRange, SupportedStreamConfigsError,
 };
-use crate::{ChannelCount, SampleRate};
+use crate::{ChannelCount, SampleRate, output::HostUnavailableError};
 
 #[derive(Default, Clone)]
 pub struct CpalOutput {}
@@ -141,6 +141,7 @@ impl Device for CpalDevice {
                         cpal::StreamError::BackendSpecific { err } => {
                             StreamError::BackendSpecific(BackendSpecificError(err.to_string()))
                         }
+                        err => StreamError::Unknown(err.to_string()),
                     });
                 },
                 None,
@@ -156,6 +157,7 @@ impl Device for CpalDevice {
                 cpal::BuildStreamError::BackendSpecific { err } => {
                     BuildStreamError::BackendSpecific(BackendSpecificError(err.to_string()))
                 }
+                e => BuildStreamError::Unknown(e.to_string()),
             })?;
 
         Ok(Box::new(CpalStream(stream)))
@@ -179,8 +181,13 @@ impl Host for CpalHost {
 impl AudioBackend for CpalOutput {
     type Host = CpalHost;
     type Device = CpalDevice;
+    type HostId = cpal::HostId;
 
     fn default_host(&self) -> Self::Host {
         CpalHost(cpal::default_host())
+    }
+
+    fn host_from_id(&self, id: Self::HostId) -> Result<Self::Host, HostUnavailableError> {
+        Ok(cpal::host_from_id(id).map(CpalHost).unwrap())
     }
 }

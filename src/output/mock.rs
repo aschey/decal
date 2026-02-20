@@ -163,10 +163,14 @@ pub struct MockOutput {
 
 impl AudioBackend for MockOutput {
     type Host = MockHost;
-
+    type HostId = ();
     type Device = MockDevice;
 
     fn default_host(&self) -> Self::Host {
         self.default_host.clone()
+    }
+
+    fn host_from_id(&self, _id: Self::HostId) -> Result<Self::Host, super::HostUnavailableError> {
+        Ok(self.default_host())
     }
 }

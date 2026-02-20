@@ -19,12 +19,6 @@ unsafe impl Send for RtAudioHost {}
 
 unsafe impl Sync for RtAudioHost {}
 
-impl RtAudioHost {
-    pub fn host_from_id(&self, id: rtaudio::Api) -> Result<Self, super::HostUnavailableError> {
-        Ok(RtAudioHost(rtaudio::Host::new(id).unwrap()))
-    }
-}
-
 pub struct RtAudioStream(rtaudio::StreamHandle);
 
 pub struct RtAudioDevice(rtaudio::DeviceInfo);
@@ -186,6 +180,10 @@ impl Host for RtAudioHost {
     type Device = RtAudioDevice;
     type Id = rtaudio::Api;
     type Devices = Box<dyn Iterator<Item = RtAudioDevice>>;
+
+    fn from_id(id: Self::Id) -> Result<Self, super::HostUnavailableError> {
+        Ok(RtAudioHost(rtaudio::Host::new(id).unwrap()))
+    }
 
     fn default_output_device(&self) -> Option<Self::Device> {
         self.0

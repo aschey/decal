@@ -16,12 +16,6 @@ impl Default for CpalHost {
     }
 }
 
-impl CpalHost {
-    pub fn host_from_id(id: cpal::HostId) -> Result<Self, HostUnavailableError> {
-        Ok(cpal::host_from_id(id).map(CpalHost).unwrap())
-    }
-}
-
 pub struct CpalDevice(cpal::Device);
 
 pub struct CpalDevices(cpal::OutputDevices<<cpal::Host as cpal::traits::HostTrait>::Devices>);
@@ -178,6 +172,10 @@ impl Host for CpalHost {
     type Device = CpalDevice;
     type Id = cpal::HostId;
     type Devices = CpalDevices;
+
+    fn from_id(id: cpal::HostId) -> Result<Self, HostUnavailableError> {
+        Ok(cpal::host_from_id(id).map(CpalHost).unwrap())
+    }
 
     fn default_output_device(&self) -> Option<Self::Device> {
         self.0.default_output_device().map(CpalDevice)

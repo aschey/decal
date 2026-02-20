@@ -8,7 +8,8 @@ use super::{
     Host, PlayStreamError, Stream, StreamConfig, StreamError, SupportedStreamConfig,
     SupportedStreamConfigRange, SupportedStreamConfigsError,
 };
-use crate::SampleRate;
+use crate::output::{SampleFormat, SupportedBufferSize};
+use crate::{ChannelCount, SampleRate};
 use dasp::Sample;
 
 pub struct MockStream {
@@ -135,10 +136,34 @@ pub struct MockHost {
     pub additional_devices: Vec<MockDevice>,
 }
 
+impl Default for MockHost {
+    fn default() -> Self {
+        Self {
+            default_device: MockDevice::new(
+                "".to_owned(),
+                SupportedStreamConfig {
+                    channels: ChannelCount(2),
+                    sample_rate: SampleRate(44100),
+                    buffer_size: SupportedBufferSize::Range { min: 0, max: 9999 },
+                    sample_format: SampleFormat::F32,
+                },
+                SampleRate(1024),
+                SampleRate(192000),
+                vec![],
+            ),
+            additional_devices: vec![],
+        }
+    }
+}
+
 impl Host for MockHost {
     type Device = MockDevice;
     type Id = ();
     type Devices = Box<dyn Iterator<Item = MockDevice>>;
+
+    fn from_id(_id: Self::Id) -> Result<Self, super::HostUnavailableError> {
+        Ok(Self::default())
+    }
 
     fn default_output_device(&self) -> Option<Self::Device> {
         Some(self.default_device.clone())

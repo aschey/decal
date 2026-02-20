@@ -295,6 +295,10 @@ impl Host for CubebHost {
     type Id = ();
     type Devices = Box<dyn Iterator<Item = CubebDevice>>;
 
+    fn from_id(_id: Self::Id) -> Result<Self, super::HostUnavailableError> {
+        Ok(Self::default())
+    }
+
     fn default_output_device(&self) -> Option<Self::Device> {
         with_context(|ctx| {
             ctx.enumerate_devices(DeviceType::OUTPUT)

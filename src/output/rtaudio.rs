@@ -184,7 +184,7 @@ impl Stream for RtAudioStream {
 
 impl Host for RtAudioHost {
     type Device = RtAudioDevice;
-
+    type Id = rtaudio::Api;
     type Devices = Box<dyn Iterator<Item = RtAudioDevice>>;
 
     fn default_output_device(&self) -> Option<Self::Device> {
@@ -202,5 +202,9 @@ impl Host for RtAudioHost {
             .map(|d| RtAudioDevice(d.clone()))
             .collect();
         Ok(Box::new(devices.into_iter()))
+    }
+
+    fn id(&self) -> Self::Id {
+        self.0.api()
     }
 }

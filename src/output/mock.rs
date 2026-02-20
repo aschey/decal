@@ -137,7 +137,7 @@ pub struct MockHost {
 
 impl Host for MockHost {
     type Device = MockDevice;
-
+    type Id = ();
     type Devices = Box<dyn Iterator<Item = MockDevice>>;
 
     fn default_output_device(&self) -> Option<Self::Device> {
@@ -154,4 +154,6 @@ impl Host for MockHost {
             .into_iter(),
         ))
     }
+
+    fn id(&self) -> Self::Id {}
 }

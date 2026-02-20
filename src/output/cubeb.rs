@@ -292,7 +292,7 @@ pub struct CubebHost {}
 
 impl Host for CubebHost {
     type Device = CubebDevice;
-
+    type Id = ();
     type Devices = Box<dyn Iterator<Item = CubebDevice>>;
 
     fn default_output_device(&self) -> Option<Self::Device> {
@@ -319,4 +319,6 @@ impl Host for CubebHost {
         });
         Ok(Box::new(devices.into_iter()))
     }
+
+    fn id(&self) -> Self::Id {}
 }

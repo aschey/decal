@@ -270,9 +270,12 @@ pub trait Device {
 
 pub trait Host: Send + Sync + 'static {
     type Device: Device;
+    type Id;
     type Devices: Iterator<Item = Self::Device>;
+
     fn default_output_device(&self) -> Option<Self::Device>;
     fn output_devices(&self) -> Result<Self::Devices, DevicesError>;
+    fn id(&self) -> Self::Id;
 }
 
 #[derive(Debug, Error)]

@@ -176,7 +176,7 @@ impl Device for CpalDevice {
 
 impl Host for CpalHost {
     type Device = CpalDevice;
-
+    type Id = cpal::HostId;
     type Devices = CpalDevices;
 
     fn default_output_device(&self) -> Option<Self::Device> {
@@ -185,5 +185,9 @@ impl Host for CpalHost {
 
     fn output_devices(&self) -> Result<Self::Devices, DevicesError> {
         Ok(CpalDevices(self.0.output_devices().unwrap()))
+    }
+
+    fn id(&self) -> Self::Id {
+        self.0.id()
     }
 }

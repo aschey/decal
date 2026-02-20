@@ -166,6 +166,7 @@ impl Device for CpalDevice {
                 cpal::BuildStreamError::BackendSpecific { err } => {
                     BuildStreamError::BackendSpecific(BackendSpecificError(err.to_string()))
                 }
+                cpal::BuildStreamError::DeviceBusy => BuildStreamError::DeviceBusy,
                 e => BuildStreamError::Unknown(e.to_string()),
             })?;
 

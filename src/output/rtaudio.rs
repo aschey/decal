@@ -19,7 +19,7 @@ unsafe impl Send for RtAudioHost {}
 
 unsafe impl Sync for RtAudioHost {}
 
-pub struct RtAudioStream(rtaudio::StreamHandle);
+pub struct RtAudioStream(Option<rtaudio::StreamHandle>);
 
 pub struct RtAudioDevice(rtaudio::DeviceInfo);
 
@@ -161,7 +161,7 @@ impl Device for RtAudioDevice {
             )
             .unwrap();
 
-        Ok(Box::new(RtAudioStream(stream)))
+        Ok(Box::new(RtAudioStream(Some(stream))))
     }
 }
 
@@ -170,9 +170,23 @@ impl Stream for RtAudioStream {
         Ok(())
     }
 
-    fn stop(&mut self) -> Result<(), PlayStreamError> {
-        self.0.stop();
+    fn pause(&mut self) -> Result<(), PlayStreamError> {
         Ok(())
+    }
+
+    fn stop(&mut self) -> Result<(), PlayStreamError> {
+        if let Some(stream) = &mut self.0 {
+            stream.stop();
+        }
+        Ok(())
+    }
+}
+
+impl Drop for RtAudioStream {
+    fn drop(&mut self) {
+        if let Some(stream) = self.0.take() {
+            stream.close();
+        }
     }
 }
 

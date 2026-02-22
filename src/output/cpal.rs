@@ -36,6 +36,11 @@ impl Stream for CpalStream {
         Ok(())
     }
 
+    fn pause(&mut self) -> Result<(), PlayStreamError> {
+        self.0.pause().unwrap();
+        Ok(())
+    }
+
     fn stop(&mut self) -> Result<(), PlayStreamError> {
         Ok(())
     }

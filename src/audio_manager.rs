@@ -193,6 +193,11 @@ where
         Ok(())
     }
 
+    pub fn pause(&mut self, decoder: &mut Decoder<T>) {
+        decoder.pause();
+        self.output.pause();
+    }
+
     pub fn flush(&mut self) -> Result<(), WriteBlockingError> {
         let res = self.flush_output();
         if res.is_ok() {

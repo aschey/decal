@@ -86,7 +86,7 @@ pub struct BackendSpecificError(pub String);
 
 pub trait Stream {
     fn play(&mut self) -> Result<(), PlayStreamError>;
-
+    fn pause(&mut self) -> Result<(), PlayStreamError>;
     fn stop(&mut self) -> Result<(), PlayStreamError>;
 }
 
@@ -556,10 +556,16 @@ impl<T: DecalSample + Default + 'static, H: Host> AudioOutput<T, H> {
     }
 
     pub fn stop(&mut self) {
-        if let Some(s) = self.stream.as_mut() {
-            s.stop().unwrap()
+        if let Some(stream) = self.stream.as_mut() {
+            stream.stop().unwrap()
         }
         self.stream = None;
+    }
+
+    pub fn pause(&mut self) {
+        if let Some(stream) = self.stream.as_mut() {
+            stream.pause().unwrap();
+        }
     }
 
     pub fn is_buffer_full(&self) -> bool {

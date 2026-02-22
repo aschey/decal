@@ -279,6 +279,10 @@ impl<T> Stream for CubebStream<T> {
         Ok(())
     }
 
+    fn pause(&mut self) -> Result<(), super::PlayStreamError> {
+        Ok(())
+    }
+
     fn stop(&mut self) -> Result<(), super::PlayStreamError> {
         if self.started.swap(false, Ordering::SeqCst) {
             self.stream.stop().unwrap();

@@ -22,6 +22,10 @@ impl Stream for MockStream {
         Ok(())
     }
 
+    fn pause(&mut self) -> Result<(), PlayStreamError> {
+        Ok(())
+    }
+
     fn stop(&mut self) -> Result<(), PlayStreamError> {
         self.started.store(false, Ordering::SeqCst);
         Ok(())

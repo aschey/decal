@@ -211,7 +211,8 @@ fn event_loop<H: Host>(
                             break true;
                         }
                         Command::Volume(volume) => {
-                            manager.set_volume(volume, &mut decoder);
+                            manager.set_volume(volume);
+                            decoder.set_volume(volume);
                         }
                         Command::Stop => {
                             return Ok(());

@@ -99,9 +99,8 @@ where
         self.device_name = device;
     }
 
-    pub fn set_volume(&mut self, volume: T::Float, decoder: &mut Decoder<T>) {
+    pub fn set_volume(&mut self, volume: T::Float) {
         self.volume = volume;
-        decoder.set_volume(volume);
     }
 
     pub fn init_decoder(

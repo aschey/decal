@@ -193,8 +193,7 @@ where
         Ok(())
     }
 
-    pub fn pause(&mut self, decoder: &mut Decoder<T>) {
-        decoder.pause();
+    pub fn pause(&mut self) {
         self.output.pause();
     }
 

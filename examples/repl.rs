@@ -190,7 +190,8 @@ fn event_loop<H: Host>(
                 decoder.seek(seek_position).unwrap();
             }
             if paused {
-                manager.pause(&mut decoder);
+                decoder.pause();
+                manager.pause();
             }
 
             if reset {

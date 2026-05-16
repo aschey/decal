@@ -16,9 +16,9 @@ dasp = { version = "0.11", optional = true }
 rb = { version = "0.4", optional = true }
 rubato = { version = "1.0.1", optional = true }
 audioadapter-buffers = { version = "2", optional = true }
-symphonia = { git = "https://github.com/pdeljanov/Symphonia", rev = "449b1889381626920ffa016cfcc9fa168872f287", optional = true }
-symphonia-adapter-fdk-aac = { git = "https://github.com/aschey/symphonia-adapters", rev = "359417934943390edbb019f7cdc2b813284dcc17", optional = true }
-symphonia-adapter-libopus = { git = "https://github.com/aschey/symphonia-adapters", rev = "359417934943390edbb019f7cdc2b813284dcc17", optional = true }
+symphonia = { version = "0.6", optional = true }
+symphonia-adapter-fdk-aac = { git = "https://github.com/aschey/symphonia-adapters", rev = "782e2822e11356097c9fcf67419ae97716d3adca", optional = true }
+symphonia-adapter-libopus = { git = "https://github.com/aschey/symphonia-adapters", rev = "782e2822e11356097c9fcf67419ae97716d3adca", optional = true }
 tap = "1"
 thiserror = "2"
 tracing = "0.1"

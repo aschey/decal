@@ -173,7 +173,7 @@ fn create_decoder(
         None => return Err(DecoderError::NoTracks),
     };
 
-    let decode_opts = AudioDecoderOptions { verify: true };
+    let decode_opts = AudioDecoderOptions::default();
     let Some(CodecParameters::Audio(codec_params)) = &track.codec_params else {
         return Err(DecoderError::InvalidTrackType);
     };
@@ -201,10 +201,7 @@ where
         }
         let mss = MediaSourceStream::new(source.as_media_source(), Default::default());
 
-        let format_opts = FormatOptions {
-            enable_gapless: settings.enable_gapless,
-            ..FormatOptions::default()
-        };
+        let format_opts = FormatOptions::default();
         let metadata_opts = MetadataOptions::default();
 
         let reader =
@@ -505,9 +502,9 @@ where
                 let packet = loop {
                     match self.reader.next_packet() {
                         Ok(Some(packet)) => {
-                            if packet.track_id() == self.track_id {
+                            if packet.track_id == self.track_id {
                                 if let Some(required_ts) = self.seek_required_ts {
-                                    if packet.pts() < required_ts {
+                                    if packet.pts < required_ts {
                                         continue;
                                     } else {
                                         self.seek_required_ts = None;
@@ -529,7 +526,7 @@ where
                         }
                     };
                 };
-                self.timestamp = packet.pts();
+                self.timestamp = packet.pts;
                 match self.process_output(&packet) {
                     Ok(()) => break,
                     Err(DecoderError::Recoverable(e)) => {

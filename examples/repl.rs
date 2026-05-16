@@ -146,10 +146,11 @@ fn main() -> io::Result<()> {
                     }
                 }
             }
-            Signal::CtrlD | Signal::CtrlC => {
+            Signal::CtrlD | Signal::CtrlC | Signal::ExternalBreak(_) => {
                 println!("\nAborted!");
                 break Ok(());
             }
+            _ => {}
         }
     }
 }

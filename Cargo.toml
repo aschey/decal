@@ -17,8 +17,8 @@ rb = { version = "0.4", optional = true }
 rubato = { version = "1.0.1", optional = true }
 audioadapter-buffers = { version = "2", optional = true }
 symphonia = { version = "0.6", optional = true }
-symphonia-adapter-fdk-aac = { git = "https://github.com/aschey/symphonia-adapters", rev = "21522f1cf0d5705ead9bb43b80ffea321308a2ca", optional = true }
-symphonia-adapter-libopus = { git = "https://github.com/aschey/symphonia-adapters", rev = "21522f1cf0d5705ead9bb43b80ffea321308a2ca", optional = true }
+symphonia-adapter-fdk-aac = { version = "0.2", optional = true }
+symphonia-adapter-libopus = { version = "0.3", optional = true }
 tap = "1"
 thiserror = "2"
 tracing = "0.1"

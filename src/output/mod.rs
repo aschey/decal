@@ -31,6 +31,7 @@ pub struct Error {
 }
 
 impl Error {
+    #[allow(unused)]
     pub(crate) fn with_kind(kind: ErrorKind) -> Self {
         Self {
             message: None,
@@ -38,6 +39,7 @@ impl Error {
         }
     }
 
+    #[allow(unused)]
     pub(crate) fn with_message(message: Cow<'static, str>, kind: ErrorKind) -> Self {
         Self {
             message: Some(message),

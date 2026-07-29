@@ -171,7 +171,6 @@ impl<T: Sample + DaspSample + ConvertibleSample + rubato::Sample> ResampledDecod
             self.in_sample_rate.0 as usize,
             self.out_sample_rate.0 as usize,
             self.settings.chunk_size,
-            1,
             self.channels.0 as usize,
             FixedSync::Both,
         )

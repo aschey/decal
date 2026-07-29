@@ -1,10 +1,10 @@
+use std::borrow::Cow;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use crate::{ChannelCount, SampleRate};
 use rb::{RB, RbConsumer, RbInspector, RbProducer, SpscRb};
-use thiserror::Error;
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 
 #[cfg(feature = "output-cpal")]
 mod cpal;
@@ -24,70 +24,83 @@ mod rtaudio;
 pub use rtaudio::*;
 
 #[derive(thiserror::Error, Debug)]
-pub enum PlayStreamError {}
+#[error("{error_kind}: {message:?}")]
+pub struct Error {
+    message: Option<Cow<'static, str>>,
+    error_kind: ErrorKind,
+}
+
+impl Error {
+    pub(crate) fn with_kind(kind: ErrorKind) -> Self {
+        Self {
+            message: None,
+            error_kind: kind,
+        }
+    }
+
+    pub(crate) fn with_message(message: Cow<'static, str>, kind: ErrorKind) -> Self {
+        Self {
+            message: Some(message),
+            error_kind: kind,
+        }
+    }
+}
 
 #[derive(thiserror::Error, Debug)]
-pub enum DeviceNameError {}
-
-#[derive(thiserror::Error, Debug)]
-pub enum SupportedStreamConfigsError {}
-
-#[derive(thiserror::Error, Debug)]
-pub enum DefaultStreamConfigError {}
-
-#[derive(thiserror::Error, Debug)]
-pub enum BuildStreamError {
-    #[error(
-        "The device no longer exists. This can happen if the device is disconnected while the \
-         program is running."
-    )]
-    DeviceNotAvailable,
-    #[error("The device is busy. This may be due to another stream using the device")]
+pub enum ErrorKind {
+    #[error("")]
     DeviceBusy,
-    #[error("The specified stream configuration is not supported.")]
-    StreamConfigNotSupported,
-    #[error("Called something the device didn't understand")]
-    InvalidArgument,
-    #[error("Occurs if adding a new Stream ID would cause an integer overflow.")]
-    StreamIdOverflow,
-    #[error("{0}")]
-    BackendSpecific(BackendSpecificError),
-    #[error("{0}")]
-    Unknown(String),
-}
 
-#[derive(thiserror::Error, Debug)]
-pub enum StreamError {
-    #[error("Device not available")]
+    #[error("")]
+    DeviceChanged,
+
+    #[error("")]
     DeviceNotAvailable,
-    #[error("Stream is no longer valid and must be rebuilt")]
+
+    #[error("")]
+    HostUnavailable,
+
+    #[error("")]
+    InvalidInput,
+
+    #[error("")]
+    PermissionDenied,
+
+    #[error("")]
+    RealtimeDenied,
+
+    #[error("")]
+    ResourceExhausted,
+
+    #[error("")]
     StreamInvalidated,
-    #[error("Buffer underrun - may cause audio glitches")]
-    BufferUnderrun,
-    #[error("Input data was discarded")]
-    InputOverflow,
-    #[error("Invalid input configuration: {0}")]
-    InvalidConfiguration(String),
-    #[error("{0}")]
-    BackendSpecific(BackendSpecificError),
-    #[error("{0}")]
-    Unknown(String),
+
+    #[error("")]
+    UnsupportedConfig,
+
+    #[error("")]
+    UnsupportedOperation,
+
+    #[error("")]
+    LoadConfigsError,
+
+    #[error("")]
+    Xrun,
+
+    #[error("")]
+    BackendError,
+
+    #[error("")]
+    NoDefaultDevice,
+
+    #[error("")]
+    Other,
 }
-
-#[derive(thiserror::Error, Debug)]
-pub enum DevicesError {}
-
-#[derive(thiserror::Error, Debug)]
-pub enum HostUnavailableError {}
-
-#[derive(thiserror::Error, Debug)]
-#[error("{0}")]
-pub struct BackendSpecificError(pub String);
 
 pub trait Stream {
-    fn play(&mut self) -> Result<(), PlayStreamError>;
-    fn pause(&mut self) -> Result<(), PlayStreamError>;
-    fn stop(&mut self) -> Result<(), PlayStreamError>;
+    fn play(&mut self) -> Result<(), Error>;
+    fn pause(&mut self) -> Result<(), Error>;
+    fn stop(&mut self) -> Result<(), Error>;
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
@@ -248,24 +261,22 @@ impl DecalSample for f64 {
 pub trait Device {
     type SupportedOutputConfigs: Iterator<Item = SupportedStreamConfigRange>;
 
-    fn default_output_config(&self) -> Result<SupportedStreamConfig, DefaultStreamConfigError>;
+    fn default_output_config(&self) -> Result<SupportedStreamConfig, Error>;
 
-    fn name(&self) -> Result<String, DeviceNameError>;
+    fn name(&self) -> Result<String, Error>;
 
-    fn supported_output_configs(
-        &self,
-    ) -> Result<Self::SupportedOutputConfigs, SupportedStreamConfigsError>;
+    fn supported_output_configs(&self) -> Result<Self::SupportedOutputConfigs, Error>;
 
     fn build_output_stream<T, D, E>(
         &mut self,
         config: &StreamConfig,
         data_callback: D,
         error_callback: E,
-    ) -> Result<Box<dyn Stream>, BuildStreamError>
+    ) -> Result<Box<dyn Stream>, Error>
     where
         T: DecalSample,
         D: FnMut(&mut [T]) + Send + Sync + 'static,
-        E: FnMut(StreamError) + Clone + Send + Sync + 'static;
+        E: FnMut(Error) + Clone + Send + Sync + 'static;
 }
 
 pub trait Host: Default + Send + Sync + 'static {
@@ -273,28 +284,10 @@ pub trait Host: Default + Send + Sync + 'static {
     type Id: Send + Sync;
     type Devices: Iterator<Item = Self::Device>;
 
-    fn from_id(id: Self::Id) -> Result<Self, HostUnavailableError>;
+    fn from_id(id: Self::Id) -> Result<Self, Error>;
     fn default_output_device(&self) -> Option<Self::Device>;
-    fn output_devices(&self) -> Result<Self::Devices, DevicesError>;
+    fn output_devices(&self) -> Result<Self::Devices, Error>;
     fn id(&self) -> Self::Id;
-}
-
-#[derive(Debug, Error)]
-pub enum AudioOutputError {
-    #[error("No default device found")]
-    NoDefaultDevice,
-    #[error("Error getting default device config: {0}")]
-    OutputDeviceConfigError(#[from] DefaultStreamConfigError),
-    #[error("Error opening output stream: {0}")]
-    OpenStreamError(#[from] BuildStreamError),
-    #[error("Error starting stream: {0}")]
-    StartStreamError(#[from] PlayStreamError),
-    #[error("Unsupported device configuration: {0}")]
-    UnsupportedConfiguration(String),
-    #[error("Error loading devices: {0}")]
-    LoadDevicesError(#[from] DevicesError),
-    #[error("Error loading config: {0}")]
-    LoadConfigsError(#[from] SupportedStreamConfigsError),
 }
 
 pub struct RequestedOutputConfig {
@@ -325,7 +318,7 @@ pub enum WriteBlockingError {
 pub struct OutputBuilder<H: Host> {
     host: Arc<H>,
     on_configuration_changed: Arc<Box<dyn Fn() + Send + Sync>>,
-    on_error: Arc<Box<dyn Fn(BackendSpecificError) + Send + Sync>>,
+    on_error: Arc<Box<dyn Fn(Error) + Send + Sync>>,
     current_device: Arc<RwLock<Option<String>>>,
     settings: OutputSettings,
 }
@@ -351,7 +344,7 @@ impl<H: Host> OutputBuilder<H> {
     ) -> Self
     where
         F1: Fn() + Send + Sync + 'static,
-        F2: Fn(BackendSpecificError) + Send + Sync + 'static,
+        F2: Fn(Error) + Send + Sync + 'static,
     {
         let builder = Self {
             host: Arc::new(host),
@@ -404,23 +397,23 @@ impl<H: Host> OutputBuilder<H> {
         self.settings = settings;
     }
 
-    pub fn default_output_config(&self) -> Result<SupportedStreamConfig, AudioOutputError> {
-        let device = self
-            .host
-            .default_output_device()
-            .ok_or(AudioOutputError::NoDefaultDevice)?;
-        Ok(device.default_output_config()?)
+    pub fn default_output_config(&self) -> Result<SupportedStreamConfig, Error> {
+        let device = self.host.default_output_device().ok_or(Error {
+            message: None,
+            error_kind: ErrorKind::NoDefaultDevice,
+        })?;
+        device.default_output_config()
     }
 
     pub fn find_closest_config(
         &self,
         device_name: Option<&str>,
         config: RequestedOutputConfig,
-    ) -> Result<SupportedStreamConfig, AudioOutputError> {
-        let default_device = self
-            .host
-            .default_output_device()
-            .ok_or(AudioOutputError::NoDefaultDevice)?;
+    ) -> Result<SupportedStreamConfig, Error> {
+        let default_device = self.host.default_output_device().ok_or(Error {
+            message: None,
+            error_kind: ErrorKind::NoDefaultDevice,
+        })?;
         let device = match &device_name {
             Some(device_name) => self
                 .host
@@ -446,16 +439,12 @@ impl<H: Host> OutputBuilder<H> {
             return Ok(default_config);
         }
 
-        if let Some(matched_config) = device
-            .supported_output_configs()
-            .map_err(AudioOutputError::LoadConfigsError)?
-            .find(|c| {
-                c.channels == channels
-                    && c.sample_format == sample_format
-                    && c.min_sample_rate <= sample_rate
-                    && c.max_sample_rate >= sample_rate
-            })
-        {
+        if let Some(matched_config) = device.supported_output_configs()?.find(|c| {
+            c.channels == channels
+                && c.sample_format == sample_format
+                && c.min_sample_rate <= sample_rate
+                && c.max_sample_rate >= sample_rate
+        }) {
             return Ok(matched_config.with_sample_rate(sample_rate));
         }
 
@@ -466,7 +455,7 @@ impl<H: Host> OutputBuilder<H> {
         self.host.default_output_device()
     }
 
-    pub fn output_devices(&self) -> Result<H::Devices, DevicesError> {
+    pub fn output_devices(&self) -> Result<H::Devices, Error> {
         self.host.output_devices()
     }
 
@@ -474,12 +463,12 @@ impl<H: Host> OutputBuilder<H> {
         &self,
         device_name: Option<String>,
         config: SupportedStreamConfig,
-    ) -> Result<AudioOutput<T, H>, AudioOutputError> {
+    ) -> Result<AudioOutput<T, H>, Error> {
         *self.current_device.write().expect("lock poisoned") = device_name.clone();
-        let default_device = self
-            .host
-            .default_output_device()
-            .ok_or(AudioOutputError::NoDefaultDevice)?;
+        let default_device = self.host.default_output_device().ok_or(Error {
+            message: None,
+            error_kind: ErrorKind::NoDefaultDevice,
+        })?;
 
         let device = match &device_name {
             Some(device_name) => self
@@ -511,7 +500,7 @@ pub struct AudioOutput<T, H: Host> {
     ring_buf: SpscRb<T>,
     stream: Option<Box<dyn Stream>>,
     on_configuration_changed: Arc<Box<dyn Fn() + Send + Sync>>,
-    on_error: Arc<Box<dyn Fn(BackendSpecificError) + Send + Sync>>,
+    on_error: Arc<Box<dyn Fn(Error) + Send + Sync>>,
     device: H::Device,
     config: SupportedStreamConfig,
     settings: OutputSettings,
@@ -522,7 +511,7 @@ impl<T: DecalSample + Default + 'static, H: Host> AudioOutput<T, H> {
         device: H::Device,
         config: SupportedStreamConfig,
         on_configuration_changed: Arc<Box<dyn Fn() + Send + Sync>>,
-        on_error: Arc<Box<dyn Fn(BackendSpecificError) + Send + Sync>>,
+        on_error: Arc<Box<dyn Fn(Error) + Send + Sync>>,
         settings: OutputSettings,
     ) -> Self {
         let buffer_duration = Duration::from_millis(200);
@@ -543,7 +532,7 @@ impl<T: DecalSample + Default + 'static, H: Host> AudioOutput<T, H> {
         }
     }
 
-    pub fn start(&mut self) -> Result<(), AudioOutputError> {
+    pub fn start(&mut self) -> Result<(), Error> {
         if self.stream.is_some() {
             return Ok(());
         }
@@ -621,7 +610,7 @@ impl<T: DecalSample + Default + 'static, H: Host> AudioOutput<T, H> {
     fn create_stream(
         &mut self,
         ring_buf_consumer: rb::Consumer<T>,
-    ) -> Result<Box<dyn Stream>, AudioOutputError> {
+    ) -> Result<Box<dyn Stream>, Error> {
         let channels = self.config.channels;
         let config = StreamConfig {
             channels: self.config.channels,
@@ -635,43 +624,32 @@ impl<T: DecalSample + Default + 'static, H: Host> AudioOutput<T, H> {
         let filler = T::EQUILIBRIUM;
         let on_error = self.on_error.clone();
         let on_configuration_changed = self.on_configuration_changed.clone();
-        let mut stream = self
-            .device
-            .build_output_stream(
-                &config,
-                move |data: &mut [T]| {
-                    // Write out as many samples as possible from the ring buffer to the audio
-                    // output.
-                    let written = ring_buf_consumer.read(data).unwrap_or(0);
-                    // Mute any remaining samples.
-                    if data.len() > written {
-                        warn!("Output buffer not full, muting remaining",);
-                        data[written..].iter_mut().for_each(|s| *s = filler);
-                    }
-                },
-                move |err| match err {
-                    StreamError::DeviceNotAvailable | StreamError::StreamInvalidated => {
-                        info!("Stream resetting due to error or configuration change...");
-                        on_configuration_changed();
-                    }
-                    StreamError::BackendSpecific(err) => {
-                        on_error(err);
-                    }
-                    StreamError::InputOverflow => {
-                        warn!("input overflow")
-                    }
-                    StreamError::BufferUnderrun => {
-                        warn!("buffer underrun");
-                    }
-                    StreamError::InvalidConfiguration(err) => {
-                        error!("invalid configuration: {err}")
-                    }
-                    e => {
-                        warn!("unknown error: {e:?}")
-                    }
-                },
-            )
-            .map_err(AudioOutputError::OpenStreamError)?;
+        let mut stream = self.device.build_output_stream(
+            &config,
+            move |data: &mut [T]| {
+                // Write out as many samples as possible from the ring buffer to the audio
+                // output.
+                let written = ring_buf_consumer.read(data).unwrap_or(0);
+                // Mute any remaining samples.
+                if data.len() > written {
+                    warn!("Output buffer not full, muting remaining",);
+                    data[written..].iter_mut().for_each(|s| *s = filler);
+                }
+            },
+            move |err| match err.error_kind {
+                ErrorKind::DeviceNotAvailable | ErrorKind::StreamInvalidated => {
+                    info!("Stream resetting due to error or configuration change...");
+                    on_configuration_changed();
+                }
+                ErrorKind::BackendError => {
+                    on_error(err);
+                }
+
+                e => {
+                    warn!("unknown error: {e:?}")
+                }
+            },
+        )?;
 
         // Start the output stream.
         stream.play()?;

@@ -4,11 +4,10 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 
 use super::{
-    BuildStreamError, DecalSample, DefaultStreamConfigError, Device, DeviceNameError, DevicesError,
-    Host, PlayStreamError, Stream, StreamConfig, StreamError, SupportedStreamConfig,
-    SupportedStreamConfigRange, SupportedStreamConfigsError,
+    DecalSample, Device, Host, Stream, StreamConfig, SupportedStreamConfig,
+    SupportedStreamConfigRange,
 };
-use crate::output::{SampleFormat, SupportedBufferSize};
+use crate::output::{self, SampleFormat, SupportedBufferSize};
 use crate::{ChannelCount, SampleRate};
 use dasp::Sample;
 
@@ -17,16 +16,16 @@ pub struct MockStream {
 }
 
 impl Stream for MockStream {
-    fn play(&mut self) -> Result<(), PlayStreamError> {
+    fn play(&mut self) -> Result<(), output::Error> {
         self.started.store(true, Ordering::SeqCst);
         Ok(())
     }
 
-    fn pause(&mut self) -> Result<(), PlayStreamError> {
+    fn pause(&mut self) -> Result<(), output::Error> {
         Ok(())
     }
 
-    fn stop(&mut self) -> Result<(), PlayStreamError> {
+    fn stop(&mut self) -> Result<(), output::Error> {
         self.started.store(false, Ordering::SeqCst);
         Ok(())
     }
@@ -74,17 +73,15 @@ impl MockDevice {
 impl Device for MockDevice {
     type SupportedOutputConfigs = Box<dyn Iterator<Item = SupportedStreamConfigRange>>;
 
-    fn default_output_config(&self) -> Result<SupportedStreamConfig, DefaultStreamConfigError> {
+    fn default_output_config(&self) -> Result<SupportedStreamConfig, output::Error> {
         Ok(self.default_config.clone())
     }
 
-    fn name(&self) -> Result<String, DeviceNameError> {
+    fn name(&self) -> Result<String, output::Error> {
         Ok(self.name.to_owned())
     }
 
-    fn supported_output_configs(
-        &self,
-    ) -> Result<Self::SupportedOutputConfigs, SupportedStreamConfigsError> {
+    fn supported_output_configs(&self) -> Result<Self::SupportedOutputConfigs, output::Error> {
         Ok(Box::new(
             [
                 vec![SupportedStreamConfigRange {
@@ -106,11 +103,11 @@ impl Device for MockDevice {
         _config: &StreamConfig,
         mut data_callback: D,
         _error_callback: E,
-    ) -> Result<Box<dyn Stream>, BuildStreamError>
+    ) -> Result<Box<dyn Stream>, output::Error>
     where
         T: DecalSample,
         D: FnMut(&mut [T]) + Send + 'static,
-        E: FnMut(StreamError) + Send + Sync + 'static,
+        E: FnMut(output::Error) + Send + Sync + 'static,
     {
         let started = Arc::new(AtomicBool::new(false));
 
@@ -165,7 +162,7 @@ impl Host for MockHost {
     type Id = ();
     type Devices = Box<dyn Iterator<Item = MockDevice>>;
 
-    fn from_id(_id: Self::Id) -> Result<Self, super::HostUnavailableError> {
+    fn from_id(_id: Self::Id) -> Result<Self, output::Error> {
         Ok(Self::default())
     }
 
@@ -173,7 +170,7 @@ impl Host for MockHost {
         Some(self.default_device.clone())
     }
 
-    fn output_devices(&self) -> Result<Self::Devices, DevicesError> {
+    fn output_devices(&self) -> Result<Self::Devices, output::Error> {
         Ok(Box::new(
             [
                 vec![self.default_device.clone()],

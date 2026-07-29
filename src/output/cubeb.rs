@@ -7,12 +7,11 @@ use cubeb::{
 };
 use cubeb_core::DevicePref;
 
-use crate::ChannelCount;
+use crate::{ChannelCount, output};
 
 use super::{
-    DecalSample, DefaultStreamConfigError, Device, Host, SampleFormat, SampleRate, Stream,
-    StreamConfig, StreamError, SupportedBufferSize, SupportedStreamConfig,
-    SupportedStreamConfigRange,
+    DecalSample, Device, Host, SampleFormat, SampleRate, Stream, StreamConfig, SupportedBufferSize,
+    SupportedStreamConfig, SupportedStreamConfigRange,
 };
 
 thread_local! {
@@ -121,7 +120,7 @@ impl CubebDevice {
     where
         T: 'static,
         D: FnMut(&mut [T]) + Send + Sync + 'static,
-        E: FnMut(StreamError) + Clone + Send + Sync + 'static,
+        E: FnMut(output::Error) + Clone + Send + Sync + 'static,
     {
         let params = cubeb::StreamParamsBuilder::new()
             .channels(config.channels.0 as u32)
@@ -156,7 +155,9 @@ impl CubebDevice {
                     cubeb::State::Stopped => {}
                     cubeb::State::Drained => {}
                     cubeb::State::Error => {
-                        error_callback(StreamError::DeviceNotAvailable);
+                        error_callback(output::Error::with_kind(
+                            output::ErrorKind::DeviceNotAvailable,
+                        ));
                     }
                 };
             });
@@ -183,17 +184,15 @@ impl CubebDevice {
 impl Device for CubebDevice {
     type SupportedOutputConfigs = Box<dyn Iterator<Item = SupportedStreamConfigRange>>;
 
-    fn default_output_config(&self) -> Result<SupportedStreamConfig, DefaultStreamConfigError> {
+    fn default_output_config(&self) -> Result<SupportedStreamConfig, output::Error> {
         Ok(self.default_output_config.clone())
     }
 
-    fn name(&self) -> Result<String, super::DeviceNameError> {
+    fn name(&self) -> Result<String, output::Error> {
         Ok(self.name.clone())
     }
 
-    fn supported_output_configs(
-        &self,
-    ) -> Result<Self::SupportedOutputConfigs, super::SupportedStreamConfigsError> {
+    fn supported_output_configs(&self) -> Result<Self::SupportedOutputConfigs, output::Error> {
         Ok(Box::new(self.output_configs.clone().into_iter()))
     }
 
@@ -202,11 +201,11 @@ impl Device for CubebDevice {
         config: &StreamConfig,
         mut data_callback: D,
         error_callback: E,
-    ) -> Result<Box<dyn Stream>, super::BuildStreamError>
+    ) -> Result<Box<dyn Stream>, output::Error>
     where
         T: DecalSample,
         D: FnMut(&mut [T]) + Send + Sync + 'static,
-        E: FnMut(super::StreamError) + Clone + Send + Sync + 'static,
+        E: FnMut(output::Error) + Clone + Send + Sync + 'static,
     {
         let mut buf = vec![T::EQUILIBRIUM; 1024];
 
@@ -271,7 +270,7 @@ impl<T> Drop for CubebStream<T> {
 }
 
 impl<T> Stream for CubebStream<T> {
-    fn play(&mut self) -> Result<(), super::PlayStreamError> {
+    fn play(&mut self) -> Result<(), output::Error> {
         if !self.started.swap(true, Ordering::SeqCst) {
             self.stream.start().unwrap();
         }
@@ -279,11 +278,11 @@ impl<T> Stream for CubebStream<T> {
         Ok(())
     }
 
-    fn pause(&mut self) -> Result<(), super::PlayStreamError> {
+    fn pause(&mut self) -> Result<(), output::Error> {
         Ok(())
     }
 
-    fn stop(&mut self) -> Result<(), super::PlayStreamError> {
+    fn stop(&mut self) -> Result<(), output::Error> {
         if self.started.swap(false, Ordering::SeqCst) {
             self.stream.stop().unwrap();
         }
@@ -299,7 +298,7 @@ impl Host for CubebHost {
     type Id = ();
     type Devices = Box<dyn Iterator<Item = CubebDevice>>;
 
-    fn from_id(_id: Self::Id) -> Result<Self, super::HostUnavailableError> {
+    fn from_id(_id: Self::Id) -> Result<Self, output::Error> {
         Ok(Self::default())
     }
 
@@ -317,7 +316,7 @@ impl Host for CubebHost {
         })
     }
 
-    fn output_devices(&self) -> Result<Self::Devices, super::DevicesError> {
+    fn output_devices(&self) -> Result<Self::Devices, output::Error> {
         let devices: Vec<_> = with_context(|ctx| {
             ctx.enumerate_devices(DeviceType::OUTPUT)
                 .unwrap()

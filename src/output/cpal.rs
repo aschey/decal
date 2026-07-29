@@ -1,12 +1,10 @@
 use cpal::traits::{DeviceTrait as _, HostTrait as _, StreamTrait as _};
 
 use super::{
-    BackendSpecificError, BufferSize, BuildStreamError, DecalSample, DefaultStreamConfigError,
-    Device, DeviceNameError, DevicesError, Host, PlayStreamError, SampleFormat, Stream,
-    StreamConfig, StreamError, SupportedBufferSize, SupportedStreamConfig,
-    SupportedStreamConfigRange, SupportedStreamConfigsError,
+    BufferSize, DecalSample, Device, Host, SampleFormat, Stream, StreamConfig, SupportedBufferSize,
+    SupportedStreamConfig, SupportedStreamConfigRange,
 };
-use crate::{ChannelCount, SampleRate, output::HostUnavailableError};
+use crate::{ChannelCount, SampleRate, output};
 
 pub struct CpalHost(cpal::Host);
 
@@ -31,17 +29,17 @@ impl Iterator for CpalDevices {
 pub struct CpalStream(cpal::Stream);
 
 impl Stream for CpalStream {
-    fn play(&mut self) -> Result<(), PlayStreamError> {
+    fn play(&mut self) -> Result<(), output::Error> {
         self.0.play().unwrap();
         Ok(())
     }
 
-    fn pause(&mut self) -> Result<(), PlayStreamError> {
+    fn pause(&mut self) -> Result<(), output::Error> {
         self.0.pause().unwrap();
         Ok(())
     }
 
-    fn stop(&mut self) -> Result<(), PlayStreamError> {
+    fn stop(&mut self) -> Result<(), output::Error> {
         Ok(())
     }
 }
@@ -49,7 +47,7 @@ impl Stream for CpalStream {
 impl Device for CpalDevice {
     type SupportedOutputConfigs = Box<dyn Iterator<Item = SupportedStreamConfigRange>>;
 
-    fn default_output_config(&self) -> Result<SupportedStreamConfig, DefaultStreamConfigError> {
+    fn default_output_config(&self) -> Result<SupportedStreamConfig, output::Error> {
         let config = self.0.default_output_config().unwrap();
 
         Ok(SupportedStreamConfig {
@@ -78,13 +76,11 @@ impl Device for CpalDevice {
         })
     }
 
-    fn name(&self) -> Result<String, DeviceNameError> {
+    fn name(&self) -> Result<String, output::Error> {
         Ok(self.0.description().unwrap().name().to_string())
     }
 
-    fn supported_output_configs(
-        &self,
-    ) -> Result<Self::SupportedOutputConfigs, SupportedStreamConfigsError> {
+    fn supported_output_configs(&self) -> Result<Self::SupportedOutputConfigs, output::Error> {
         Ok(Box::new(self.0.supported_output_configs().unwrap().map(
             |c| SupportedStreamConfigRange {
                 channels: ChannelCount(c.channels()),
@@ -121,16 +117,16 @@ impl Device for CpalDevice {
         config: &StreamConfig,
         mut data_callback: D,
         mut error_callback: E,
-    ) -> Result<Box<dyn Stream>, BuildStreamError>
+    ) -> Result<Box<dyn Stream>, output::Error>
     where
         T: DecalSample,
         D: FnMut(&mut [T]) + Send + 'static,
-        E: FnMut(StreamError) + Send + Sync + 'static,
+        E: FnMut(output::Error) + Send + Sync + 'static,
     {
         let stream = self
             .0
             .build_output_stream(
-                &cpal::StreamConfig {
+                cpal::StreamConfig {
                     channels: config.channels.0,
                     sample_rate: config.sample_rate.0,
                     buffer_size: match config.buffer_size {
@@ -142,31 +138,13 @@ impl Device for CpalDevice {
                     data_callback(data);
                 },
                 move |stream_error| {
-                    error_callback(match stream_error {
-                        cpal::StreamError::DeviceNotAvailable => StreamError::DeviceNotAvailable,
-                        cpal::StreamError::StreamInvalidated => StreamError::StreamInvalidated,
-                        cpal::StreamError::BufferUnderrun => StreamError::BufferUnderrun,
-                        cpal::StreamError::BackendSpecific { err } => {
-                            StreamError::BackendSpecific(BackendSpecificError(err.to_string()))
-                        }
-                        err => StreamError::Unknown(err.to_string()),
-                    });
+                    error_callback(stream_error.into());
                 },
                 None,
             )
-            .map_err(|e| match e {
-                cpal::BuildStreamError::DeviceNotAvailable => BuildStreamError::DeviceNotAvailable,
-                //cpal::BuildStreamError::DeviceBusy => BuildStreamError::DeviceBusy,
-                cpal::BuildStreamError::StreamConfigNotSupported => {
-                    BuildStreamError::StreamConfigNotSupported
-                }
-                cpal::BuildStreamError::InvalidArgument => BuildStreamError::InvalidArgument,
-                cpal::BuildStreamError::StreamIdOverflow => BuildStreamError::StreamIdOverflow,
-                cpal::BuildStreamError::BackendSpecific { err } => {
-                    BuildStreamError::BackendSpecific(BackendSpecificError(err.to_string()))
-                }
-                cpal::BuildStreamError::DeviceBusy => BuildStreamError::DeviceBusy,
-                e => BuildStreamError::Unknown(e.to_string()),
+            .map_err(|e| {
+                let err: output::Error = e.into();
+                err
             })?;
 
         Ok(Box::new(CpalStream(stream)))
@@ -178,7 +156,7 @@ impl Host for CpalHost {
     type Id = cpal::HostId;
     type Devices = CpalDevices;
 
-    fn from_id(id: cpal::HostId) -> Result<Self, HostUnavailableError> {
+    fn from_id(id: cpal::HostId) -> Result<Self, output::Error> {
         Ok(cpal::host_from_id(id).map(CpalHost).unwrap())
     }
 
@@ -186,11 +164,43 @@ impl Host for CpalHost {
         self.0.default_output_device().map(CpalDevice)
     }
 
-    fn output_devices(&self) -> Result<Self::Devices, DevicesError> {
+    fn output_devices(&self) -> Result<Self::Devices, output::Error> {
         Ok(CpalDevices(self.0.output_devices().unwrap()))
     }
 
     fn id(&self) -> Self::Id {
         self.0.id()
+    }
+}
+
+impl From<cpal::ErrorKind> for output::ErrorKind {
+    fn from(value: cpal::ErrorKind) -> Self {
+        match value {
+            cpal::ErrorKind::DeviceBusy => output::ErrorKind::DeviceBusy,
+            cpal::ErrorKind::DeviceChanged => output::ErrorKind::DeviceChanged,
+            cpal::ErrorKind::DeviceNotAvailable => output::ErrorKind::DeviceNotAvailable,
+            cpal::ErrorKind::HostUnavailable => output::ErrorKind::HostUnavailable,
+            cpal::ErrorKind::InvalidInput => output::ErrorKind::InvalidInput,
+            cpal::ErrorKind::PermissionDenied => output::ErrorKind::PermissionDenied,
+            cpal::ErrorKind::RealtimeDenied => output::ErrorKind::RealtimeDenied,
+            cpal::ErrorKind::ResourceExhausted => output::ErrorKind::ResourceExhausted,
+            cpal::ErrorKind::StreamInvalidated => output::ErrorKind::StreamInvalidated,
+            cpal::ErrorKind::UnsupportedConfig => output::ErrorKind::UnsupportedConfig,
+            cpal::ErrorKind::UnsupportedOperation => output::ErrorKind::UnsupportedOperation,
+            cpal::ErrorKind::Xrun => output::ErrorKind::Xrun,
+            cpal::ErrorKind::BackendError => output::ErrorKind::BackendError,
+            cpal::ErrorKind::Other => output::ErrorKind::Other,
+            _ => output::ErrorKind::Other,
+        }
+    }
+}
+
+impl From<cpal::Error> for output::Error {
+    fn from(value: cpal::Error) -> Self {
+        let message = value.message().map(|s| s.to_string());
+        Self {
+            error_kind: value.kind().into(),
+            message: message.map(|s| s.into()),
+        }
     }
 }

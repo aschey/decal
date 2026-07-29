@@ -4,15 +4,15 @@ use dasp::sample::Sample as DaspSample;
 use symphonia::core::audio::conv::ConvertibleSample;
 use symphonia::core::audio::sample::Sample;
 
-use crate::DEFAULT_SAMPLE_RATE;
 use crate::decoder::{
     Decoder, DecoderError, DecoderResult, DecoderSettings, ResampledDecoder, ResamplerSettings,
     Source,
 };
 use crate::output::{
-    AudioOutput, AudioOutputError, DecalSample, Host, OutputBuilder, RequestedOutputConfig,
-    SupportedStreamConfig, WriteBlockingError,
+    AudioOutput, DecalSample, Host, OutputBuilder, RequestedOutputConfig, SupportedStreamConfig,
+    WriteBlockingError,
 };
+use crate::{DEFAULT_SAMPLE_RATE, output};
 
 #[derive(thiserror::Error, Debug)]
 pub enum WriteOutputError {
@@ -25,7 +25,7 @@ pub enum WriteOutputError {
 #[derive(thiserror::Error, Debug)]
 pub enum ResetError {
     #[error(transparent)]
-    AudioOutputError(#[from] AudioOutputError),
+    AudioOutputError(#[from] output::Error),
     #[error(transparent)]
     WriteBlockingError(#[from] WriteBlockingError),
     #[error(transparent)]
@@ -118,7 +118,7 @@ where
         Ok(decoder)
     }
 
-    fn rebuild_output(&mut self) -> Result<(), AudioOutputError> {
+    fn rebuild_output(&mut self) -> Result<(), output::Error> {
         self.output = self
             .output_builder
             .new_output(self.device_name.clone(), self.output_config.clone())?;

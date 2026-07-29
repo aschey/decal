@@ -5,10 +5,8 @@ use rtaudio::NativeFormats;
 use crate::{
     ChannelCount, SampleRate,
     output::{
-        BuildStreamError, DecalSample, DefaultStreamConfigError, Device, DeviceNameError,
-        DevicesError, Host, PlayStreamError, SampleFormat, Stream, StreamConfig, StreamError,
-        SupportedBufferSize, SupportedStreamConfig, SupportedStreamConfigRange,
-        SupportedStreamConfigsError,
+        self, DecalSample, Device, Host, SampleFormat, Stream, StreamConfig, SupportedBufferSize,
+        SupportedStreamConfig, SupportedStreamConfigRange,
     },
 };
 
@@ -26,7 +24,7 @@ pub struct RtAudioDevice(rtaudio::DeviceInfo);
 impl Device for RtAudioDevice {
     type SupportedOutputConfigs = Box<dyn Iterator<Item = SupportedStreamConfigRange>>;
 
-    fn default_output_config(&self) -> Result<SupportedStreamConfig, DefaultStreamConfigError> {
+    fn default_output_config(&self) -> Result<SupportedStreamConfig, output::Error> {
         Ok(SupportedStreamConfig {
             channels: ChannelCount(self.0.output_channels as u16),
             buffer_size: SupportedBufferSize::Unknown,
@@ -35,13 +33,11 @@ impl Device for RtAudioDevice {
         })
     }
 
-    fn name(&self) -> Result<String, DeviceNameError> {
+    fn name(&self) -> Result<String, output::Error> {
         Ok(self.0.name().to_string())
     }
 
-    fn supported_output_configs(
-        &self,
-    ) -> Result<Self::SupportedOutputConfigs, SupportedStreamConfigsError> {
+    fn supported_output_configs(&self) -> Result<Self::SupportedOutputConfigs, output::Error> {
         let formats: Vec<_> = self
             .0
             .native_formats
@@ -70,11 +66,11 @@ impl Device for RtAudioDevice {
         config: &StreamConfig,
         mut data_callback: D,
         mut error_callback: E,
-    ) -> Result<Box<dyn Stream>, BuildStreamError>
+    ) -> Result<Box<dyn Stream>, output::Error>
     where
         T: DecalSample,
         D: FnMut(&mut [T]) + Send + Sync + 'static,
-        E: FnMut(StreamError) + Clone + Send + Sync + 'static,
+        E: FnMut(output::Error) + Clone + Send + Sync + 'static,
     {
         let mut stream = rtaudio::Host::default()
             .open_stream(&rtaudio::StreamConfig {
@@ -102,10 +98,10 @@ impl Device for RtAudioDevice {
                       _info: &rtaudio::StreamInfo,
                       status: rtaudio::StreamStatus| {
                     if status.intersects(rtaudio::StreamStatus::INPUT_OVERFLOW) {
-                        error_callback(StreamError::InputOverflow);
+                        error_callback(output::Error::with_kind(output::ErrorKind::Xrun));
                     }
                     if status.intersects(rtaudio::StreamStatus::OUTPUT_UNDERFLOW) {
-                        error_callback(StreamError::BufferUnderrun);
+                        error_callback(output::Error::with_kind(output::ErrorKind::Xrun));
                     }
 
                     // SAFETY: T will always match the numeric type since we're checking its FORMAT property
@@ -154,8 +150,9 @@ impl Device for RtAudioDevice {
                         rtaudio::Buffers::SInt24 { .. } => {}
                     }
 
-                    error_callback(StreamError::InvalidConfiguration(
-                        "Sample type does not match output buffer".to_string(),
+                    error_callback(output::Error::with_message(
+                        "Sample type does not match output buffer".into(),
+                        output::ErrorKind::UnsupportedConfig,
                     ));
                 },
             )
@@ -166,15 +163,15 @@ impl Device for RtAudioDevice {
 }
 
 impl Stream for RtAudioStream {
-    fn play(&mut self) -> Result<(), PlayStreamError> {
+    fn play(&mut self) -> Result<(), output::Error> {
         Ok(())
     }
 
-    fn pause(&mut self) -> Result<(), PlayStreamError> {
+    fn pause(&mut self) -> Result<(), output::Error> {
         Ok(())
     }
 
-    fn stop(&mut self) -> Result<(), PlayStreamError> {
+    fn stop(&mut self) -> Result<(), output::Error> {
         if let Some(stream) = &mut self.0 {
             stream.stop();
         }
@@ -195,7 +192,7 @@ impl Host for RtAudioHost {
     type Id = rtaudio::Api;
     type Devices = Box<dyn Iterator<Item = RtAudioDevice>>;
 
-    fn from_id(id: Self::Id) -> Result<Self, super::HostUnavailableError> {
+    fn from_id(id: Self::Id) -> Result<Self, output::Error> {
         Ok(RtAudioHost(rtaudio::Host::new(id).unwrap()))
     }
 
@@ -205,7 +202,7 @@ impl Host for RtAudioHost {
             .map(|i| RtAudioDevice(self.0.devices()[i].clone()))
     }
 
-    fn output_devices(&self) -> Result<Self::Devices, DevicesError> {
+    fn output_devices(&self) -> Result<Self::Devices, output::Error> {
         let devices: Vec<_> = self
             .0
             .devices()

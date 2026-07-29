@@ -2,9 +2,10 @@ use std::borrow::Cow;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
-use crate::{ChannelCount, SampleRate};
 use rb::{RB, RbConsumer, RbInspector, RbProducer, SpscRb};
 use tracing::{info, warn};
+
+use crate::{ChannelCount, SampleRate};
 
 #[cfg(feature = "output-cpal")]
 mod cpal;
@@ -639,7 +640,9 @@ impl<T: DecalSample + Default + 'static, H: Host> AudioOutput<T, H> {
                 }
             },
             move |err| match err.error_kind {
-                ErrorKind::DeviceNotAvailable | ErrorKind::StreamInvalidated => {
+                ErrorKind::DeviceNotAvailable
+                | ErrorKind::DeviceBusy
+                | ErrorKind::StreamInvalidated => {
                     info!("Stream resetting due to error or configuration change...");
                     on_configuration_changed();
                 }

@@ -30,12 +30,12 @@ pub struct CpalStream(cpal::Stream);
 
 impl Stream for CpalStream {
     fn play(&mut self) -> Result<(), output::Error> {
-        self.0.play().unwrap();
+        self.0.play()?;
         Ok(())
     }
 
     fn pause(&mut self) -> Result<(), output::Error> {
-        self.0.pause().unwrap();
+        self.0.pause()?;
         Ok(())
     }
 
@@ -48,7 +48,7 @@ impl Device for CpalDevice {
     type SupportedOutputConfigs = Box<dyn Iterator<Item = SupportedStreamConfigRange>>;
 
     fn default_output_config(&self) -> Result<SupportedStreamConfig, output::Error> {
-        let config = self.0.default_output_config().unwrap();
+        let config = self.0.default_output_config()?;
 
         Ok(SupportedStreamConfig {
             channels: ChannelCount(config.channels()),
@@ -77,12 +77,12 @@ impl Device for CpalDevice {
     }
 
     fn name(&self) -> Result<String, output::Error> {
-        Ok(self.0.description().unwrap().name().to_string())
+        Ok(self.0.description()?.name().to_string())
     }
 
     fn supported_output_configs(&self) -> Result<Self::SupportedOutputConfigs, output::Error> {
-        Ok(Box::new(self.0.supported_output_configs().unwrap().map(
-            |c| SupportedStreamConfigRange {
+        Ok(Box::new(self.0.supported_output_configs()?.map(|c| {
+            SupportedStreamConfigRange {
                 channels: ChannelCount(c.channels()),
                 min_sample_rate: SampleRate(c.max_sample_rate()),
                 max_sample_rate: SampleRate(c.max_sample_rate()),
@@ -108,8 +108,8 @@ impl Device for CpalDevice {
                     cpal::SampleFormat::F64 => SampleFormat::F64,
                     c => unimplemented!("unsupported: {c:?}"),
                 },
-            },
-        )))
+            }
+        })))
     }
 
     fn build_output_stream<T, D, E>(
@@ -157,7 +157,7 @@ impl Host for CpalHost {
     type Devices = CpalDevices;
 
     fn from_id(id: cpal::HostId) -> Result<Self, output::Error> {
-        Ok(cpal::host_from_id(id).map(CpalHost).unwrap())
+        Ok(cpal::host_from_id(id).map(CpalHost)?)
     }
 
     fn default_output_device(&self) -> Option<Self::Device> {
@@ -165,7 +165,7 @@ impl Host for CpalHost {
     }
 
     fn output_devices(&self) -> Result<Self::Devices, output::Error> {
-        Ok(CpalDevices(self.0.output_devices().unwrap()))
+        Ok(CpalDevices(self.0.output_devices()?))
     }
 
     fn id(&self) -> Self::Id {

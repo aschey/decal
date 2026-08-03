@@ -7,12 +7,11 @@ use cubeb::{
 };
 use cubeb_core::DevicePref;
 
-use crate::{ChannelCount, output};
-
 use super::{
     DecalSample, Device, Host, SampleFormat, SampleRate, Stream, StreamConfig, SupportedBufferSize,
     SupportedStreamConfig, SupportedStreamConfigRange,
 };
+use crate::{ChannelCount, output};
 
 thread_local! {
     static CONTEXT: OnceCell<Context> = OnceCell::default();
@@ -164,7 +163,9 @@ impl CubebDevice {
         // Device changed hook is only implemented on mac
         #[cfg(target_os = "macos")]
         builder.device_changed_cb(move || {
-            error_callback_(StreamError::DeviceNotAvailable);
+            error_callback(output::Error::with_kind(
+                output::ErrorKind::DeviceNotAvailable,
+            ));
         });
         let stream = with_context(move |ctx| {
             let stream = builder.init(ctx).unwrap();

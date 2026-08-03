@@ -163,7 +163,7 @@ impl CubebDevice {
         // Device changed hook is only implemented on mac
         #[cfg(target_os = "macos")]
         builder.device_changed_cb(move || {
-            error_callback(output::Error::with_kind(
+            error_callback_(output::Error::with_kind(
                 output::ErrorKind::DeviceNotAvailable,
             ));
         });

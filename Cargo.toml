@@ -6,14 +6,14 @@ edition = "2024"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-cpal = { git = "https://github.com/RustAudio/cpal", rev = "a26e702e8c93204ddb3200aa825a647849b19aac", optional = true }
+cpal = { version = "0.18.1", optional = true }
 cubeb = { version = "0.37", optional = true }
 cubeb-core = { version = "0.37", optional = true }
 rtaudio = { version = "0.8", optional = true }
 dasp = { version = "0.11", optional = true }
 rb = { version = "0.4", optional = true }
-rubato = { version = "4", optional = true }
-audioadapter-buffers = { version = "4", optional = true }
+rubato = { version = "5", optional = true }
+audioadapter-buffers = { version = "5", optional = true }
 symphonia = { version = "0.6", optional = true }
 symphonia-adapter-fdk-aac = { version = "0.2", optional = true }
 symphonia-adapter-libopus = { version = "0.3", optional = true }
@@ -28,7 +28,7 @@ windows-sys = { version = "0.61", features = [
 
 [dev-dependencies]
 crossterm = "0.29"
-reedline = "0.49.0"
+reedline = "0.50.0"
 stream-download = { version = "0.24.1" }
 tokio = { version = "1.48.0", features = ["macros", "rt-multi-thread"] }
 tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }

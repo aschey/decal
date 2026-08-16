@@ -4,13 +4,13 @@ use std::path::Path;
 use std::sync::mpsc::{self, TryRecvError};
 use std::time::Duration;
 
-use crossterm::style::Stylize;
+use crossterm::style::{Color, Stylize};
 use decal::decoder::{DecoderResult, DecoderSettings, ReadSeekSource, ResamplerSettings};
 use decal::output::{CpalHost, Host, OutputBuilder, OutputSettings, WriteBlockingError};
 use decal::{AudioManager, ResetMode, WriteOutputError};
 use reedline::{
-    Color, ColumnarMenu, DefaultCompleter, DefaultPrompt, Emacs, KeyCode, KeyModifiers,
-    MenuBuilder, Reedline, ReedlineEvent, ReedlineMenu, Signal, default_emacs_keybindings,
+    ColumnarMenu, DefaultCompleter, DefaultPrompt, Emacs, KeyCode, KeyModifiers, MenuBuilder,
+    Reedline, ReedlineEvent, ReedlineMenu, Signal, default_emacs_keybindings,
 };
 use tracing::error;
 

@@ -6,9 +6,9 @@ edition = "2024"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-cpal = { version = "0.18.1", optional = true }
-cubeb = { version = "0.37", optional = true }
-cubeb-core = { version = "0.37", optional = true }
+cpal = { version = "0.18.2", optional = true }
+cubeb = { version = "0.38", optional = true }
+cubeb-core = { version = "0.38", optional = true }
 rtaudio = { version = "0.8", optional = true }
 dasp = { version = "0.11", optional = true }
 rb = { version = "0.4", optional = true }
@@ -28,7 +28,7 @@ windows-sys = { version = "0.61", features = [
 
 [dev-dependencies]
 crossterm = "0.29"
-reedline = "0.50.0"
+reedline = "0.52"
 stream-download = { version = "0.24.1" }
 tokio = { version = "1.48.0", features = ["macros", "rt-multi-thread"] }
 tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
